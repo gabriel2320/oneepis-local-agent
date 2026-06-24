@@ -119,7 +119,7 @@ fn fallback_plan(inspection: &crate::agent::types::RepoInspection, objective: &s
                 .to_string(),
         );
     }
-    MicroPlan {
+    let mut plan = MicroPlan {
         objective: sanitize_log(objective),
         recommended_gate: recommended_gate.clone(),
         risk_level: if inspection.blocks.is_empty() {
@@ -143,7 +143,9 @@ fn fallback_plan(inspection: &crate::agent::types::RepoInspection, objective: &s
         warnings,
         blocked: !inspection.blocks.is_empty(),
         model_used: "local_rules".to_string(),
-    }
+    };
+    normalize_plan(&mut plan, inspection);
+    plan
 }
 
 fn normalize_plan(plan: &mut MicroPlan, inspection: &crate::agent::types::RepoInspection) {
@@ -251,7 +253,9 @@ fn state_summary(
             }
         }
         "micro_plan" => format!("Plan generado con modelo {}.", plan.model_used),
-        "patch_draft" => "v0.1 no genera diff persistente; solo plan revisable.".to_string(),
+        "patch_draft" => {
+            "v0.2 genera PatchDraft revisable sin escribir en el repo objetivo.".to_string()
+        }
         "safety_review" => {
             if mode != "dry_run" {
                 "Modo controlado bloqueado hasta v0.3.".to_string()

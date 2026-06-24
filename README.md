@@ -24,11 +24,17 @@ npm run check
 
 Acceso directo de escritorio:
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\launch-dev.ps1" -SmokeTest
+```bat
+scripts\launch-dev.cmd -SmokeTest
 ```
 
-El `.lnk` del Escritorio debe apuntar a `scripts\launch-dev.ps1` con `-NoProfile -NoExit -ExecutionPolicy Bypass -File`.
+El `.lnk` del Escritorio debe apuntar a `C:\Windows\System32\cmd.exe` con argumentos:
+
+```text
+/k call "C:\Users\gdela\OneDrive\Documentos Importantes\oneepis-local-agent\scripts\launch-dev.cmd"
+```
+
+El launcher `.cmd` delega en `scripts\launch-dev.ps1` con `-ExecutionPolicy Bypass`, mantiene la ventana abierta y muestra cualquier error antes de cerrar.
 
 CLI del agente:
 
@@ -120,7 +126,7 @@ Estado actual:
 - Deteccion OneEpis por `AGENTS.md` + `docs/GOVERNANCE.md`.
 - Estado Ollama y modelos por politica.
 - Plan de microciclo gobernado.
-- `PatchDraft` estructurado y bloqueado por defecto.
+- `PatchDraft` estructurado, revisable por defecto y bloqueado solo ante bloqueo duro.
 - Revision deterministica de drafts.
 - Gates declarados por `package.json`.
 - Bitacora PostgreSQL opcional.

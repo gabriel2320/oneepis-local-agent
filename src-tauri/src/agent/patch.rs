@@ -3,14 +3,26 @@ use crate::agent::repo::{canonical_repo, declared_gates, git, inspect_repository
 use crate::agent::runner::plan_microcycle;
 use crate::agent::safety::{sanitize_log, sha256_hex};
 use crate::agent::types::{
-    ApplyPatchRequest, ApplyPatchResult, PatchDraft, PatchReview, ReviewCheck,
+    ApplyPatchRequest, ApplyPatchResult, PatchDraft, PatchReview, RepoInspection, ReviewCheck,
 };
 use chrono::Utc;
+use std::fs;
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 const MAX_DIFF_BYTES: usize = 40_000;
 const MAX_PATCH_FILES: usize = 8;
+const ONEEPIS_PATCH_TARGETS: &[&str] = &[
+    "docs/CODEX_PLAN.md",
+    "CODEX_PLAN.md",
+    "docs/CURRENT_STATE.md",
+    "CURRENT_STATE.md",
+    "README.md",
+    "docs/GOVERNANCE.md",
+    "docs/SCREEN_TREE.md",
+    "AGENTS.md",
+];
 
 pub async fn draft_patch(
     repo_path: &str,
@@ -35,14 +47,12 @@ pub async fn draft_patch(
     } else {
         plan.required_gates.clone()
     };
-    let files = if plan.touched_surfaces.is_empty() {
-        vec!["repo".to_string()]
-    } else {
-        plan.touched_surfaces.clone()
-    };
     let summary = format!("Draft gobernado para: {}", sanitize_log(objective));
     let rationale = "Separar plan, revision y aplicacion evita que un modelo local escriba sin aprobacion humana.".to_string();
-    let unified_diff = advisory_diff(&id, &plan.objective, &plan.steps, &gates);
+    let repo = Path::new(&inspection.repo_path);
+    let (unified_diff, patch_file) =
+        advisory_diff(repo, &inspection, &id, &plan.objective, &plan.steps, &gates);
+    let blocked = plan.blocked || plan.risk_level == "red" || !inspection.blocks.is_empty();
 
     let draft = PatchDraft {
         id,
@@ -50,11 +60,11 @@ pub async fn draft_patch(
         objective: sanitize_log(objective),
         summary,
         rationale,
-        files,
+        files: vec![patch_file],
         unified_diff,
         risks,
         gates,
-        blocked: true,
+        blocked,
         model_used: plan.model_used.clone(),
         created_at,
         plan,
@@ -96,6 +106,13 @@ pub fn review_patch(draft: &PatchDraft) -> Result<PatchReview, String> {
         "diff-size",
         draft.unified_diff.len() <= MAX_DIFF_BYTES,
         "Diff excede el limite de seguridad.",
+    );
+    check(
+        &mut checks,
+        &mut blocks,
+        "gates-present",
+        !draft.gates.is_empty(),
+        "PatchDraft requiere al menos un gate declarado.",
     );
 
     let patch_files = patch_files(&draft.unified_diff);
@@ -270,8 +287,27 @@ fn check(
     }
 }
 
-fn advisory_diff(id: &str, objective: &str, steps: &[String], gates: &[String]) -> String {
+fn advisory_diff(
+    repo: &Path,
+    inspection: &RepoInspection,
+    id: &str,
+    objective: &str,
+    steps: &[String],
+    gates: &[String],
+) -> (String, String) {
+    if inspection.is_one_epis {
+        if let Some(path) = oneepis_patch_target(repo) {
+            let lines = advisory_append_lines(id, objective, steps, gates);
+            return (append_diff(repo, &path, lines), path);
+        }
+    }
+
     let path = format!("agent-runs/{id}.md");
+    let lines = advisory_file_lines(objective, steps, gates);
+    (new_file_diff(&path, lines), path)
+}
+
+fn advisory_file_lines(objective: &str, steps: &[String], gates: &[String]) -> Vec<String> {
     let mut lines = vec![
         "# OneEpis Local Agent PatchDraft".to_string(),
         String::new(),
@@ -282,12 +318,60 @@ fn advisory_diff(id: &str, objective: &str, steps: &[String], gates: &[String]) 
     for step in steps {
         lines.push(format!("- {step}"));
     }
+    lines
+}
+
+fn advisory_append_lines(
+    id: &str,
+    objective: &str,
+    steps: &[String],
+    gates: &[String],
+) -> Vec<String> {
+    let mut lines = vec![
+        String::new(),
+        format!("## OneEpis Local Agent Draft {id}"),
+        String::new(),
+        format!("- Objective: {}", sanitize_log(objective)),
+        format!("- Gates: {}", gates.join(", ")),
+        "- Decision: registrar el microciclo en una fuente canonica existente antes de aplicar cambios.".to_string(),
+        String::new(),
+    ];
+    for step in steps {
+        lines.push(format!("- {step}"));
+    }
+    lines
+}
+
+fn new_file_diff(path: &str, lines: Vec<String>) -> String {
     let body: Vec<String> = lines.into_iter().map(|line| format!("+{line}")).collect();
     format!(
         "diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1,{} @@\n{}\n",
         body.len(),
         body.join("\n")
     )
+}
+
+fn append_diff(repo: &Path, path: &str, mut lines: Vec<String>) -> String {
+    let full_path = repo.join(path);
+    let text = fs::read_to_string(full_path).unwrap_or_default();
+    let line_count = text.lines().count();
+    if line_count == 0 && lines.first().is_some_and(|line| line.is_empty()) {
+        lines.remove(0);
+    }
+    let body: Vec<String> = lines.into_iter().map(|line| format!("+{line}")).collect();
+    let old_start = line_count;
+    let new_start = line_count + 1;
+    format!(
+        "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -{old_start},0 +{new_start},{} @@\n{}\n",
+        body.len(),
+        body.join("\n")
+    )
+}
+
+fn oneepis_patch_target(repo: &Path) -> Option<String> {
+    ONEEPIS_PATCH_TARGETS
+        .iter()
+        .find_map(|relative| repo.join(relative).is_file().then(|| relative.to_string()))
 }
 
 fn patch_files(diff: &str) -> Vec<String> {
@@ -354,18 +438,63 @@ mod tests {
             r#"{"scripts":{"check":"echo ok","check:api":"echo api"}}"#,
         )
         .expect("package");
+        commit_all(&repo);
         let before = fs::read_dir(&repo).expect("before").count();
         let draft = draft_patch(
             repo.to_str().expect("utf8 repo"),
             "Auditar sin escribir",
-            None,
+            Some("http://127.0.0.1:9".to_string()),
             None,
         )
         .await
         .expect("draft");
         let after = fs::read_dir(&repo).expect("after").count();
         assert_eq!(before, after);
-        assert!(draft.blocked);
+        assert!(!draft.blocked);
+        let review = review_patch(&draft).expect("review");
+        assert!(review.approved);
+        assert!(draft.unified_diff.contains("agent-runs/"));
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[tokio::test]
+    async fn oneepis_draft_uses_existing_canonical_document() {
+        let repo = std::env::temp_dir().join(format!(
+            "oneepis-agent-oneepis-draft-test-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        fs::create_dir_all(repo.join("docs")).expect("docs");
+        Command::new("git")
+            .arg("init")
+            .current_dir(&repo)
+            .output()
+            .expect("git init");
+        fs::write(
+            repo.join("package.json"),
+            r#"{"scripts":{"check:size":"echo size","check:api":"echo api"}}"#,
+        )
+        .expect("package");
+        fs::write(repo.join("AGENTS.md"), "# Agents\n").expect("agents");
+        fs::write(repo.join("docs").join("GOVERNANCE.md"), "# Governance\n").expect("gov");
+        fs::write(repo.join("docs").join("CODEX_PLAN.md"), "# Codex Plan\n").expect("plan");
+        commit_all(&repo);
+
+        let draft = draft_patch(
+            repo.to_str().expect("utf8 repo"),
+            "Auditar API y proponer microciclo pequeno",
+            Some("http://127.0.0.1:9".to_string()),
+            None,
+        )
+        .await
+        .expect("draft");
+
+        assert!(!draft.blocked);
+        assert_eq!(draft.files, vec!["docs/CODEX_PLAN.md".to_string()]);
+        assert!(draft
+            .unified_diff
+            .contains("diff --git a/docs/CODEX_PLAN.md b/docs/CODEX_PLAN.md"));
+        assert!(!draft.unified_diff.contains("agent-runs/"));
+        assert!(draft.gates.contains(&"check:api".to_string()));
         let _ = fs::remove_dir_all(repo);
     }
 
@@ -374,5 +503,27 @@ mod tests {
         assert!(!is_safe_relative_path("../outside.rs"));
         assert!(!is_safe_relative_path("C:\\outside.rs"));
         assert!(is_safe_relative_path("src/main.rs"));
+    }
+
+    fn commit_all(repo: &std::path::Path) {
+        let add = Command::new("git")
+            .arg("add")
+            .arg(".")
+            .current_dir(repo)
+            .output()
+            .expect("git add");
+        assert!(add.status.success(), "git add failed");
+        let commit = Command::new("git")
+            .arg("-c")
+            .arg("user.name=OneEpis Agent Test")
+            .arg("-c")
+            .arg("user.email=oneepis-agent-test@example.invalid")
+            .arg("commit")
+            .arg("-m")
+            .arg("test fixture")
+            .current_dir(repo)
+            .output()
+            .expect("git commit");
+        assert!(commit.status.success(), "git commit failed");
     }
 }

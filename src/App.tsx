@@ -454,7 +454,7 @@ function PatchTab({ draft, review }: { draft: PatchDraft | null; review: PatchRe
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
       <Card title="PatchDraft">
         <div className="flex flex-wrap gap-2">
-          <Badge tone={draft.blocked ? "warning" : "success"}>{draft.blocked ? "Bloqueado" : "Aplicable"}</Badge>
+          <Badge tone={draft.blocked ? "warning" : "success"}>{draft.blocked ? "Bloqueado" : "Revisable"}</Badge>
           <Badge>{draft.id}</Badge>
           <Badge>{draft.modelUsed || "local_rules"}</Badge>
         </div>
