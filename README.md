@@ -56,6 +56,12 @@ AGENT_EMBEDDINGS_MODEL=bge-m3:latest
 AGENT_MAX_CYCLES=3
 ```
 
+Seleccion de modelo:
+
+- El microplan gobernado usa `AGENT_GOVERNANCE_MODEL`.
+- Los cambios de codigo se mantienen asociados a `AGENT_PRIMARY_CODE_MODEL`.
+- OneEpis no es un LLM separado: es un perfil de repo detectado por gobernanza, documentos y gates.
+
 PostgreSQL de desarrollo separado:
 
 ```bash

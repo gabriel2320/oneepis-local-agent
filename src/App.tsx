@@ -279,9 +279,9 @@ function RepoTab({ inspection, ollama }: { inspection: RepoInspection | null; ol
 
       <Card title="Ollama">
         <div className="grid grid-cols-2 gap-2 text-sm">
+          <ModelSlot label="Gobernanza" value={ollama?.policy.governance} missing={isMissingModel(ollama?.policy.governance)} />
           <ModelSlot label="Codigo" value={ollama?.policy.primaryCode} missing={isMissingModel(ollama?.policy.primaryCode)} />
           <ModelSlot label="Rapido" value={ollama?.policy.fastCode} missing={isMissingModel(ollama?.policy.fastCode)} />
-          <ModelSlot label="Gobierno" value={ollama?.policy.governance} missing={isMissingModel(ollama?.policy.governance)} />
           <ModelSlot label="Fallback" value={ollama?.policy.fallback} missing={isMissingModel(ollama?.policy.fallback)} />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">{ollama?.models.length ?? 0} modelos en {ollama?.baseUrl ?? "Ollama"}</p>

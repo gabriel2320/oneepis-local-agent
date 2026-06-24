@@ -26,7 +26,7 @@ pub async fn plan_microcycle(
 ) -> Result<MicroPlan, String> {
     let inspection = inspect_repository(repo_path)?;
     if let Some(mut plan) = ask_for_micro_plan(base_url, &inspection, objective).await {
-        normalize_plan(&mut plan, &inspection.declared_gates);
+        normalize_plan(&mut plan, &inspection);
         if !inspection.blocks.is_empty() {
             plan.blocked = true;
             plan.warnings.extend(inspection.blocks.clone());
@@ -145,9 +145,11 @@ fn fallback_plan(inspection: &crate::agent::types::RepoInspection, objective: &s
     }
 }
 
-fn normalize_plan(plan: &mut MicroPlan, declared_gates: &[String]) {
-    if plan.recommended_gate.is_empty() || !declared_gates.contains(&plan.recommended_gate) {
-        plan.recommended_gate = select_gate(declared_gates);
+fn normalize_plan(plan: &mut MicroPlan, inspection: &crate::agent::types::RepoInspection) {
+    if plan.recommended_gate.is_empty()
+        || !inspection.declared_gates.contains(&plan.recommended_gate)
+    {
+        plan.recommended_gate = select_gate(&inspection.declared_gates);
     }
     if plan.risk_level.is_empty() {
         plan.risk_level = if plan.blocked { "yellow" } else { "green" }.to_string();
@@ -159,12 +161,20 @@ fn normalize_plan(plan: &mut MicroPlan, declared_gates: &[String]) {
         plan.required_gates = vec![plan.recommended_gate.clone()];
     }
     plan.required_gates
-        .retain(|gate| declared_gates.contains(gate));
+        .retain(|gate| inspection.declared_gates.contains(gate));
     if plan.touched_surfaces.is_empty() {
         plan.touched_surfaces = vec!["repo".to_string()];
     }
     if plan.steps.is_empty() {
         plan.steps = vec!["Reducir el objetivo a un microciclo verificable.".to_string()];
+    }
+    let hard_blocked = !inspection.blocks.is_empty() || plan.risk_level == "red";
+    if plan.blocked && !hard_blocked {
+        plan.blocked = false;
+        plan.warnings.push(
+            "El modelo marco bloqueo sin bloqueo duro; se trata como advertencia en dry-run gobernado."
+                .to_string(),
+        );
     }
 }
 

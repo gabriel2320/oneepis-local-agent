@@ -106,9 +106,15 @@ pub async fn ask_for_micro_plan(
         return None;
     }
     let model = choose_planning_model(&status);
+    let repo_profile = if inspection.is_one_epis {
+        "oneepis"
+    } else {
+        "generic"
+    };
     let prompt = json!({
         "repo": inspection.project_name,
         "is_oneepis": inspection.is_one_epis,
+        "repo_profile": repo_profile,
         "branch": inspection.current_branch,
         "dirty": inspection.dirty,
         "declared_gates": inspection.declared_gates,
@@ -127,7 +133,7 @@ pub async fn ask_for_micro_plan(
             "messages": [
                 {
                     "role": "system",
-                    "content": "Eres un planificador local de desarrollo. Devuelve solo JSON compacto con objective, recommendedGate, riskLevel, touchedSurfaces, requiredGates, steps, warnings, blocked. Usa riskLevel green, yellow o red. No propongas push, shell libre ni cambios fuera de gobernanza."
+                    "content": "Eres el planificador local gobernado de OneEpis Local Agent usando modelos Ollama existentes. Usa el modelo de gobernanza para evaluar reglas y producir un microplan. Si repo_profile es oneepis, OneEpis es un repo objetivo permitido: aplica su doctrina sin rechazar el trabajo por defecto. Debes preferir paciente/ficha/papel/API/PostgreSQL/auditoria/permisos/OpenAPI, cambios pequenos y gates oficiales. Debes marcar blocked=true solo ante bloqueo duro: repo sucio, repo no Git, riesgo red, falta de gobernanza necesaria, falta de gate minimo o peticion fuera de limites activos como dashboard central, RAG amplio, firma, receta o IA protagonista sin plan explicito. Advertencias de gobernanza no son bloqueo. Devuelve solo JSON compacto con objective, recommendedGate, riskLevel, touchedSurfaces, requiredGates, steps, warnings, blocked. Usa riskLevel green, yellow o red. No propongas push, shell libre ni cambios fuera de gobernanza."
                 },
                 {
                     "role": "user",
@@ -232,25 +238,6 @@ fn string_list(value: Option<&Value>) -> Vec<String> {
     }
 }
 
-fn choose_planning_model(status: &OllamaStatus) -> String {
-    let available: BTreeSet<&str> = status
-        .models
-        .iter()
-        .map(|model| model.name.as_str())
-        .collect();
-    if available.contains(status.policy.governance.as_str()) {
-        status.policy.governance.clone()
-    } else if available.contains(status.policy.fallback.as_str()) {
-        status.policy.fallback.clone()
-    } else {
-        status
-            .models
-            .first()
-            .map(|model| model.name.clone())
-            .unwrap_or_else(|| status.policy.fallback.clone())
-    }
-}
-
 fn normalize_base_url(base_url: Option<String>) -> String {
     base_url
         .or_else(|| std::env::var("OLLAMA_BASE_URL").ok())
@@ -289,4 +276,23 @@ fn missing_policy_models(policy: &ModelPolicy, models: &[OllamaModel]) -> Vec<St
     .filter(|name| !names.contains(name.as_str()))
     .cloned()
     .collect()
+}
+
+fn choose_planning_model(status: &OllamaStatus) -> String {
+    let available: BTreeSet<&str> = status
+        .models
+        .iter()
+        .map(|model| model.name.as_str())
+        .collect();
+    if available.contains(status.policy.governance.as_str()) {
+        status.policy.governance.clone()
+    } else if available.contains(status.policy.fallback.as_str()) {
+        status.policy.fallback.clone()
+    } else {
+        status
+            .models
+            .first()
+            .map(|model| model.name.clone())
+            .unwrap_or_else(|| status.policy.fallback.clone())
+    }
 }
