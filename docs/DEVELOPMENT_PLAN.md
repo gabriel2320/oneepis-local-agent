@@ -50,6 +50,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Treat OneEpis warnings as visible guidance and hard blocks as stop conditions with concrete repair actions.
 - Maintain a governed `LOCAL-001..LOCAL-010` catalog for simple diet/refactor tasks: one problem, one safe `agent/local-*` branch, one local commit, declared gates, and no automatic push.
 - Maintain deterministic solvers for `LOCAL-001..LOCAL-010`: each recipe starts from a clean base branch, touches only declared surfaces, runs required gates, restores gate artifacts outside the microcycle, commits locally, and stops without push.
+- Maintain a governed `TRAIN-001..TRAIN-015` catalog for advanced supervised training: one scenario, one safe `agent/train-*` branch, maximum three concatenated cycles, local AI only, no automatic push, and stop-on-contract conditions for tables, endpoints, permissions, routes, clinical writes, or AI scope.
 
 ### v0.4.1 Usability And Clarity
 
@@ -88,6 +89,9 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `LocalProblemPlan`: preflight for one LOCAL problem with blockers, warnings, next actions, and explicit no-push guarantee.
 - `LocalProblemRun`: result of preparing a safe branch or creating a local commit, including changed files, gate results, commit SHA, blockers, warnings, and no-push guarantee.
 - `solve_local_problem`: controlled autonomous execution for `LOCAL-001..LOCAL-010`. It must prepare the safe branch from a clean base, edit only the declared surface, run declared gates, restore unrelated gate artifacts, create one local commit, and never push.
+- `TrainingScenario`: one advanced OneEpis training case with objective, branch, taught skills, gates, manual gates, allowed surfaces, stop conditions, execution mode, and local-only instructions.
+- `TrainingPlan`: read-only preflight for one TRAIN scenario with cycles, max cycles, blockers, warnings, next actions, no-push guarantee, and local-AI-only guarantee.
+- `TrainingRun`: result of preparing a safe `agent/train-*` branch for one scenario. It must not write project files, create commits, run push, or bypass OneEpis governance.
 - Proposals that mention files outside the governed context or gates outside the package become `needs_review`, not an approved path to PatchDraft.
 - Proposals that omit files may use a visible, deterministic fallback from safe context files; if no safe files exist, the decision stays blocked.
 
@@ -109,7 +113,8 @@ The agent may become more useful without becoming unbounded. Extra power must fo
 12. Run only declared gates from `package.json`.
 13. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
 14. Prepare and close pre-approved LOCAL problems only on `agent/local-*` branches, with validated files, declared gates, and a local commit.
-15. Never push automatically.
+15. Prepare advanced TRAIN scenarios only on `agent/train-*` branches, with maximum three cycles, declared gates, explicit stop conditions, local AI only, and no file writes during preparation.
+16. Never push automatically.
 
 ## Gates
 

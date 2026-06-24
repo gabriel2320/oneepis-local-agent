@@ -21,6 +21,9 @@ import type {
   PatchDraft,
   PatchReview,
   RepoInspection,
+  TrainingPlan,
+  TrainingRun,
+  TrainingScenario,
 } from "./types";
 
 type CommandArgs = Record<string, unknown>;
@@ -155,6 +158,18 @@ export function solveLocalProblem(repoPath: string, problemId: string) {
   return safeInvoke<LocalProblemRun>("solve_local_problem", { request: { repoPath, problemId } });
 }
 
+export function listTrainingScenarios() {
+  return safeInvoke<TrainingScenario[]>("list_training_scenarios", {});
+}
+
+export function trainingPlan(repoPath: string, scenarioId: string, cycles = 1) {
+  return safeInvoke<TrainingPlan>("training_plan", { request: { repoPath, scenarioId, cycles } });
+}
+
+export function prepareTrainingScenario(repoPath: string, scenarioId: string, cycles = 1) {
+  return safeInvoke<TrainingRun>("prepare_training_scenario", { request: { repoPath, scenarioId, cycles } });
+}
+
 async function safeInvoke<T>(command: string, args: CommandArgs): Promise<T> {
   if (hasTauriBridge()) {
     try {
@@ -230,6 +245,20 @@ function previewResponse(command: string, args: CommandArgs) {
       return previewLocalProblemRun(repoPath, String(requestField(args, "problemId") ?? "LOCAL-001"), "blocked");
     case "solve_local_problem":
       return previewLocalProblemRun(repoPath, String(requestField(args, "problemId") ?? "LOCAL-003"), "blocked");
+    case "list_training_scenarios":
+      return previewTrainingScenarios();
+    case "training_plan":
+      return previewTrainingPlan(
+        repoPath,
+        String(requestField(args, "scenarioId") ?? "TRAIN-001"),
+        Number(requestField(args, "cycles") ?? 1),
+      );
+    case "prepare_training_scenario":
+      return previewTrainingRun(
+        repoPath,
+        String(requestField(args, "scenarioId") ?? "TRAIN-001"),
+        Number(requestField(args, "cycles") ?? 1),
+      );
     default:
       throw new Error(PREVIEW_NOTICE);
   }
@@ -669,5 +698,72 @@ function previewLocalProblemRun(repoPath: string, problemId: string, status: str
     nextActions: ["Usar la app de escritorio para ejecutar el ciclo LOCAL real."],
     noPush: true,
     summary: "Vista previa web del ciclo LOCAL.",
+  };
+}
+
+function previewTrainingScenarios(): TrainingScenario[] {
+  return [
+    {
+      id: "TRAIN-001",
+      title: "Reducir codigo clinico sin cambiar conducta",
+      objective: "Extraer reglas pequenas y mantener las mismas respuestas.",
+      branch: "agent/train-001-reducir-clinical-intent",
+      teaches: ["Refactor pequeno.", "Tests antes de confianza."],
+      gates: ["check:api", "check:contract", "check:size"],
+      manualGates: [],
+      allowedSurfaces: ["clinical_intent.py", "clinical_intent_*"],
+      stopConditions: ["endpoint nuevo", "tabla nueva", "IA diagnostica o protagonista"],
+      executionMode: "guided_refactor",
+      instructions: ["Solo IA local.", "Maximo 3 ciclos.", "Sin push automatico."],
+    },
+    {
+      id: "TRAIN-010",
+      title: "Contrato antes de una pantalla grande",
+      objective: "Convertir una idea futura en plan minimo antes de implementar.",
+      branch: "agent/train-010-contrato-antes-ui",
+      teaches: ["Detenerse antes de ampliar alcance.", "Documentar solo lo necesario."],
+      gates: ["check:size"],
+      manualGates: ["git:diff-check"],
+      allowedSurfaces: ["docs", "contracts"],
+      stopConditions: ["ruta nueva", "permiso nuevo", "escritura clinica automatica"],
+      executionMode: "plan_only",
+      instructions: ["Solo IA local.", "Maximo 3 ciclos.", "Sin push automatico."],
+    },
+  ];
+}
+
+function previewTrainingPlan(repoPath: string, scenarioId: string, cycles: number): TrainingPlan {
+  const scenario = previewTrainingScenarios().find((item) => item.id === scenarioId) ?? previewTrainingScenarios()[0];
+  const blockers = cycles > 3 ? ["TRAIN permite entre 1 y 3 ciclos concatenados."] : [PREVIEW_NOTICE];
+  return {
+    repoPath,
+    scenario,
+    status: blockers.length > 0 ? "blocked" : scenario.executionMode === "plan_only" ? "plan_only_ready" : "ready",
+    cycles,
+    maxCycles: 3,
+    blockers,
+    warnings: ["Vista previa: no prepara ramas reales."],
+    nextActions: ["Abrir la app de escritorio.", "Revisar el plan TRAIN contra OneEpis real."],
+    noPush: true,
+    localAiOnly: true,
+    summary: "Vista previa de entrenamiento local gobernado.",
+  };
+}
+
+function previewTrainingRun(repoPath: string, scenarioId: string, cycles: number): TrainingRun {
+  const scenario = previewTrainingScenarios().find((item) => item.id === scenarioId) ?? previewTrainingScenarios()[0];
+  return {
+    id: "preview-training-run",
+    scenarioId: scenario.id,
+    status: "blocked",
+    repoPath,
+    branch: scenario.branch,
+    cycles,
+    blockers: [PREVIEW_NOTICE],
+    warnings: ["No hay push automatico.", "Solo IA local."],
+    nextActions: ["Abrir la app de escritorio para preparar la rama real."],
+    noPush: true,
+    localAiOnly: true,
+    summary: "La vista previa no crea ramas ni ejecuta entrenamiento real.",
   };
 }

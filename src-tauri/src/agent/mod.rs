@@ -11,5 +11,6 @@ pub mod readiness;
 pub mod repo;
 pub mod runner;
 pub mod safety;
+pub mod training;
 pub mod types;
 pub mod work_package;

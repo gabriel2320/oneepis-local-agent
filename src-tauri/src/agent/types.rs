@@ -494,6 +494,68 @@ pub struct LocalProblemRun {
     pub summary: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingScenario {
+    pub id: String,
+    pub title: String,
+    pub objective: String,
+    pub branch: String,
+    pub teaches: Vec<String>,
+    pub gates: Vec<String>,
+    pub manual_gates: Vec<String>,
+    pub allowed_surfaces: Vec<String>,
+    pub stop_conditions: Vec<String>,
+    pub execution_mode: String,
+    pub instructions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingRequest {
+    pub repo_path: String,
+    pub scenario_id: String,
+    #[serde(default = "default_training_cycles")]
+    pub cycles: u8,
+}
+
+fn default_training_cycles() -> u8 {
+    1
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingPlan {
+    pub repo_path: String,
+    pub scenario: TrainingScenario,
+    pub status: String,
+    pub cycles: u8,
+    pub max_cycles: u8,
+    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
+    pub next_actions: Vec<String>,
+    pub no_push: bool,
+    pub local_ai_only: bool,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingRun {
+    pub id: String,
+    pub scenario_id: String,
+    pub status: String,
+    pub repo_path: String,
+    pub branch: String,
+    pub cycles: u8,
+    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
+    pub next_actions: Vec<String>,
+    pub no_push: bool,
+    pub local_ai_only: bool,
+    pub summary: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunRequest {

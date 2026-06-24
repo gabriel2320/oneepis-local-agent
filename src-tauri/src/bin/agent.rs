@@ -12,7 +12,10 @@ use agent::persistence;
 use agent::readiness;
 use agent::repo;
 use agent::runner;
-use agent::types::{ApplyPatchRequest, LocalProblemRequest, PatchDraft, RunRequest};
+use agent::training;
+use agent::types::{
+    ApplyPatchRequest, LocalProblemRequest, PatchDraft, RunRequest, TrainingRequest,
+};
 use agent::work_package;
 use std::fs;
 
@@ -175,6 +178,36 @@ async fn run() -> Result<(), String> {
                 .await?,
             )?;
         }
+        "training-scenarios" => {
+            print_json(&training::list_training_scenarios())?;
+        }
+        "training-plan" => {
+            let repo_path = required_repo(&args)?;
+            let scenario_id = required_option(&args, "--scenario")?;
+            let cycles = option_value(&args, "--cycles")
+                .and_then(|value| value.parse::<u8>().ok())
+                .unwrap_or(1);
+            print_json(&training::training_plan(TrainingRequest {
+                repo_path: repo_path.to_string(),
+                scenario_id: scenario_id.to_string(),
+                cycles,
+            })?)?;
+        }
+        "training-prepare" => {
+            let repo_path = required_repo(&args)?;
+            let scenario_id = required_option(&args, "--scenario")?;
+            let cycles = option_value(&args, "--cycles")
+                .and_then(|value| value.parse::<u8>().ok())
+                .unwrap_or(1);
+            print_json(
+                &training::prepare_training_scenario(TrainingRequest {
+                    repo_path: repo_path.to_string(),
+                    scenario_id: scenario_id.to_string(),
+                    cycles,
+                })
+                .await?,
+            )?;
+        }
         "run" => {
             let repo_path = required_repo(&args)?;
             let max_cycles = option_value(&args, "--max-cycles")
@@ -264,7 +297,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent evolution-plan <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent local-problems | agent local-problem-plan <repo> --problem LOCAL-001 | agent local-problem-prepare <repo> --problem LOCAL-001 | agent local-problem-commit <repo> --problem LOCAL-001 | agent local-problem-solve <repo> --problem LOCAL-001 | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent evolution-plan <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent local-problems | agent local-problem-plan <repo> --problem LOCAL-001 | agent local-problem-prepare <repo> --problem LOCAL-001 | agent local-problem-commit <repo> --problem LOCAL-001 | agent local-problem-solve <repo> --problem LOCAL-001 | agent training-scenarios | agent training-plan <repo> --scenario TRAIN-001 [--cycles 1] | agent training-prepare <repo> --scenario TRAIN-001 [--cycles 1] | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
             .to_string(),
     )
 }

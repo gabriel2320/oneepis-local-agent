@@ -11,12 +11,13 @@ use agent::persistence;
 use agent::readiness;
 use agent::repo;
 use agent::runner;
+use agent::training;
 use agent::types::{
     AgentRun, AgentRunReport, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, ApplyReadiness,
     DevelopmentBrief, DevelopmentContextPack, DevelopmentReadiness, DevelopmentWorkPackage,
     EvolutionPlan, GateResult, ImplementationDecision, LocalProblemPlan, LocalProblemRequest,
     LocalProblemRun, LocalProblemSpec, MicroPlan, OllamaStatus, PatchDraft, PatchReview,
-    RepoInspection, RunRequest,
+    RepoInspection, RunRequest, TrainingPlan, TrainingRequest, TrainingRun, TrainingScenario,
 };
 use agent::work_package;
 
@@ -173,6 +174,21 @@ async fn solve_local_problem(request: LocalProblemRequest) -> Result<LocalProble
     local_problems::solve_local_problem(request).await
 }
 
+#[tauri::command]
+fn list_training_scenarios() -> Result<Vec<TrainingScenario>, String> {
+    Ok(training::list_training_scenarios())
+}
+
+#[tauri::command]
+fn training_plan(request: TrainingRequest) -> Result<TrainingPlan, String> {
+    training::training_plan(request)
+}
+
+#[tauri::command]
+async fn prepare_training_scenario(request: TrainingRequest) -> Result<TrainingRun, String> {
+    training::prepare_training_scenario(request).await
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -197,7 +213,10 @@ fn main() {
             local_problem_plan,
             prepare_local_problem,
             commit_local_problem,
-            solve_local_problem
+            solve_local_problem,
+            list_training_scenarios,
+            training_plan,
+            prepare_training_scenario
         ])
         .run(tauri::generate_context!())
         .expect("error while running OneEpis Local Agent");

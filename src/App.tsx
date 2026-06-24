@@ -31,9 +31,11 @@ import {
   commitLocalProblem,
   listRuns,
   listLocalProblems,
+  listTrainingScenarios,
   localProblemPlan,
   planMicrocycle,
   prepareLocalProblem,
+  prepareTrainingScenario,
   previewNotice,
   prepareApplyReadiness,
   reviewPatch,
@@ -41,6 +43,7 @@ import {
   runMicrocycle,
   runMicrocycleReport,
   solveLocalProblem,
+  trainingPlan,
 } from "./lib/api";
 import type {
   AgentRun,
@@ -62,6 +65,9 @@ import type {
   PatchDraft,
   PatchReview,
   RepoInspection,
+  TrainingPlan,
+  TrainingRun,
+  TrainingScenario,
 } from "./lib/types";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -72,9 +78,9 @@ import { plainText } from "./lib/plain-language";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "preparacion", "evolucion", "local", "paquete", "contexto", "brief", "decision", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "evolucion", "local", "entrenamiento", "paquete", "contexto", "brief", "decision", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
-const primaryTabs: Tab[] = ["repo", "preparacion", "evolucion", "local", "microproceso", "patch", "gates", "bitacora"];
+const primaryTabs: Tab[] = ["repo", "preparacion", "evolucion", "local", "entrenamiento", "microproceso", "patch", "gates", "bitacora"];
 const technicalTabs: Tab[] = ["paquete", "contexto", "brief", "decision", "plan", "reporte"];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -122,6 +128,11 @@ function App() {
   const [selectedLocalProblem, setSelectedLocalProblem] = useState("LOCAL-001");
   const [localPlan, setLocalPlan] = useState<LocalProblemPlan | null>(null);
   const [localRun, setLocalRun] = useState<LocalProblemRun | null>(null);
+  const [trainingScenarios, setTrainingScenarios] = useState<TrainingScenario[]>([]);
+  const [selectedTrainingScenario, setSelectedTrainingScenario] = useState("TRAIN-001");
+  const [trainingCycles, setTrainingCycles] = useState(1);
+  const [trainingPlanResult, setTrainingPlanResult] = useState<TrainingPlan | null>(null);
+  const [trainingRun, setTrainingRun] = useState<TrainingRun | null>(null);
   const [microSteps, setMicroSteps] = useState<MicroStep[]>(initialMicroSteps);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -148,20 +159,25 @@ function App() {
     setBusy("inspect");
     setError(null);
     try {
-      const [repo, ai, history, ready, problems] = await Promise.all([
+      const [repo, ai, history, ready, problems, scenarios] = await Promise.all([
         inspectRepository(repoPath),
         getOllamaStatus(),
         listRuns(20),
         getDevelopmentReadiness(repoPath),
         listLocalProblems(),
+        listTrainingScenarios(),
       ]);
       setInspection(repo);
       setOllama(ai);
       setRuns(history);
       setReadiness(ready);
       setLocalProblems(problems);
+      setTrainingScenarios(scenarios);
       if (!problems.some((problem) => problem.id === selectedLocalProblem)) {
         setSelectedLocalProblem(problems[0]?.id ?? "LOCAL-001");
+      }
+      if (!scenarios.some((scenario) => scenario.id === selectedTrainingScenario)) {
+        setSelectedTrainingScenario(scenarios[0]?.id ?? "TRAIN-001");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -494,6 +510,34 @@ function App() {
     }
   }
 
+  async function planSelectedTrainingScenario() {
+    setBusy("trainingPlan");
+    setError(null);
+    try {
+      const result = await trainingPlan(repoPath, selectedTrainingScenario, trainingCycles);
+      setTrainingPlanResult(result);
+      setActiveTab("entrenamiento");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function prepareSelectedTrainingScenario() {
+    setBusy("trainingPrepare");
+    setError(null);
+    try {
+      const result = await prepareTrainingScenario(repoPath, selectedTrainingScenario, trainingCycles);
+      setTrainingRun(result);
+      setActiveTab("entrenamiento");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     void loadAll();
   }, []);
@@ -668,6 +712,20 @@ function App() {
             onPrepare={prepareSelectedLocalProblem}
             onCommit={commitSelectedLocalProblem}
             onSolve={solveSelectedLocalProblem}
+            busy={busy}
+          />
+        )}
+        {activeTab === "entrenamiento" && (
+          <TrainingTab
+            scenarios={trainingScenarios}
+            selectedScenario={selectedTrainingScenario}
+            onSelectScenario={setSelectedTrainingScenario}
+            cycles={trainingCycles}
+            onSetCycles={setTrainingCycles}
+            plan={trainingPlanResult}
+            run={trainingRun}
+            onPlan={planSelectedTrainingScenario}
+            onPrepare={prepareSelectedTrainingScenario}
             busy={busy}
           />
         )}
@@ -1105,6 +1163,141 @@ function LocalProblemTab({
   );
 }
 
+function TrainingTab({
+  scenarios,
+  selectedScenario,
+  onSelectScenario,
+  cycles,
+  onSetCycles,
+  plan,
+  run,
+  onPlan,
+  onPrepare,
+  busy,
+}: {
+  scenarios: TrainingScenario[];
+  selectedScenario: string;
+  onSelectScenario: (scenarioId: string) => void;
+  cycles: number;
+  onSetCycles: (cycles: number) => void;
+  plan: TrainingPlan | null;
+  run: TrainingRun | null;
+  onPlan: () => void;
+  onPrepare: () => void;
+  busy: string | null;
+}) {
+  const selected = scenarios.find((scenario) => scenario.id === selectedScenario) ?? scenarios[0];
+  if (!selected) {
+    return <Empty text="Sin catalogo TRAIN. Presiona Revisar proyecto para cargar entrenamientos avanzados permitidos." />;
+  }
+
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Entrenamiento TRAIN" description="Escenario avanzado para practicar un problema dificil sin push automatico.">
+        <div className="grid gap-3">
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs font-medium text-muted-foreground">Escenario</span>
+            <select
+              value={selected.id}
+              onChange={(event) => onSelectScenario(event.target.value)}
+              className="min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            >
+              {scenarios.map((scenario) => (
+                <option key={scenario.id} value={scenario.id}>
+                  {scenario.id} - {scenario.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid max-w-40 gap-1 text-sm">
+            <span className="text-xs font-medium text-muted-foreground">Ciclos</span>
+            <input
+              type="number"
+              min={1}
+              max={3}
+              value={cycles}
+              onChange={(event) => onSetCycles(Number(event.target.value))}
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Badge>{selected.id}</Badge>
+            <Badge>{selected.executionMode}</Badge>
+            <Badge tone="warning">maximo 3 ciclos</Badge>
+            <Badge tone="warning">sin push</Badge>
+            <Badge>solo IA local</Badge>
+          </div>
+          <h3 className="text-base font-semibold break-words">{selected.title}</h3>
+          <p className="text-sm leading-6 text-muted-foreground break-words">{selected.objective}</p>
+          <HelpText label="Rama segura" value={selected.branch} />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={onPlan} disabled={busy !== null}>
+              <ListChecks className="mr-2 h-4 w-4" />
+              {busy === "trainingPlan" ? "Revisando..." : "Revisar TRAIN"}
+            </Button>
+            <Button onClick={onPrepare} disabled={busy !== null || cycles < 1 || cycles > 3}>
+              <GitBranch className="mr-2 h-4 w-4" />
+              {busy === "trainingPrepare" ? "Preparando..." : "Preparar rama"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Que aprende" description="Habilidad que el agente practica en este escenario.">
+          <List items={selected.teaches} empty="Sin aprendizajes declarados." />
+          <h4 className="mt-4 text-sm font-semibold">Superficies permitidas</h4>
+          <List items={selected.allowedSurfaces} empty="Sin superficies declaradas." />
+          <h4 className="mt-4 text-sm font-semibold">Pruebas</h4>
+          <List items={[...selected.gates, ...selected.manualGates]} empty="Sin pruebas declaradas." />
+        </Card>
+        <Card title="Cuando se detiene" description="Si aparece una senal de estas, no se improvisa: se prepara plan.">
+          <List items={selected.stopConditions} tone="warning" />
+          <List items={selected.instructions} />
+        </Card>
+      </div>
+
+      <Card title="Plan TRAIN" description="Revision antes de preparar rama. No escribe archivos del proyecto.">
+        {plan ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={plan.status === "ready" || plan.status === "plan_only_ready" ? "success" : "warning"}>{explainStatus(plan.status)}</Badge>
+              <Badge>{plan.cycles}/{plan.maxCycles} ciclos</Badge>
+              <Badge>{plan.localAiOnly ? "solo IA local" : "revisar IA"}</Badge>
+              <Badge>{plan.noPush ? "sin push" : "revisar push"}</Badge>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground break-words">{plan.summary}</p>
+            <List items={plan.blockers} tone="warning" empty="Sin bloqueos." />
+            <List items={plan.warnings} tone="warning" empty="Sin avisos." />
+            <List items={plan.nextActions} empty="Sin acciones siguientes." />
+          </>
+        ) : (
+          <Empty text="Sin plan TRAIN. Presiona Revisar TRAIN para saber si este entrenamiento puede prepararse." />
+        )}
+      </Card>
+
+      <Card title="Preparacion" description="Rama local lista para entrenar. No hace cambios, commit ni push.">
+        {run ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={run.status === "ready_for_training" ? "success" : "warning"}>{explainStatus(run.status)}</Badge>
+              <Badge>{run.branch}</Badge>
+              <Badge>{run.localAiOnly ? "solo IA local" : "revisar IA"}</Badge>
+              <Badge>{run.noPush ? "sin push" : "revisar push"}</Badge>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground break-words">{run.summary}</p>
+            <List items={run.blockers} tone="warning" empty="Sin bloqueos." />
+            <List items={run.warnings} tone="warning" empty="Sin avisos." />
+            <List items={run.nextActions} empty="Sin acciones siguientes." />
+          </>
+        ) : (
+          <Empty text="Sin preparacion. La rama TRAIN solo se crea cuando el plan no tiene bloqueos." />
+        )}
+      </Card>
+    </section>
+  );
+}
+
 function WorkPackageTab({ workPackage }: { workPackage: DevelopmentWorkPackage | null }) {
   if (!workPackage) return <Empty text="Sin preparacion tecnica. Elige un objetivo y abre Paquete tecnico desde Detalles tecnicos." />;
   return (
@@ -1523,6 +1716,7 @@ function tabLabel(tab: Tab) {
     preparacion: "Estado",
     evolucion: "Próximo paso",
     local: "LOCAL",
+    entrenamiento: "TRAIN",
     paquete: "Paquete técnico",
     contexto: "Contexto",
     brief: "Instrucciones IA",

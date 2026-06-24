@@ -386,3 +386,46 @@ export type LocalProblemRun = {
   noPush: boolean;
   summary: string;
 };
+
+export type TrainingScenario = {
+  id: string;
+  title: string;
+  objective: string;
+  branch: string;
+  teaches: string[];
+  gates: string[];
+  manualGates: string[];
+  allowedSurfaces: string[];
+  stopConditions: string[];
+  executionMode: string;
+  instructions: string[];
+};
+
+export type TrainingPlan = {
+  repoPath: string;
+  scenario: TrainingScenario;
+  status: string;
+  cycles: number;
+  maxCycles: number;
+  blockers: string[];
+  warnings: string[];
+  nextActions: string[];
+  noPush: boolean;
+  localAiOnly: boolean;
+  summary: string;
+};
+
+export type TrainingRun = {
+  id: string;
+  scenarioId: string;
+  status: string;
+  repoPath: string;
+  branch: string;
+  cycles: number;
+  blockers: string[];
+  warnings: string[];
+  nextActions: string[];
+  noPush: boolean;
+  localAiOnly: boolean;
+  summary: string;
+};
