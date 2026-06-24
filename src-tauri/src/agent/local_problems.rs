@@ -199,6 +199,7 @@ pub async fn commit_local_problem(request: LocalProblemRequest) -> Result<LocalP
             });
         }
     }
+    restore_gate_artifacts(&repo, &changed_files)?;
 
     git_add_files(&repo, &changed_files)?;
     git_commit(&repo, &problem.commit_message)?;
@@ -241,7 +242,16 @@ pub async fn solve_local_problem(request: LocalProblemRequest) -> Result<LocalPr
 
     ensure_problem_branch(&repo, &inspection.current_branch, &problem.branch)?;
     match problem.id.as_str() {
+        "LOCAL-001" => solve_local_001(&repo)?,
+        "LOCAL-002" => solve_local_002(&repo)?,
         "LOCAL-003" => solve_local_003(&repo)?,
+        "LOCAL-004" => solve_local_004(&repo)?,
+        "LOCAL-005" => solve_local_005(&repo)?,
+        "LOCAL-006" => solve_local_006(&repo)?,
+        "LOCAL-007" => solve_local_007(&repo)?,
+        "LOCAL-008" => solve_local_008(&repo)?,
+        "LOCAL-009" => solve_local_009(&repo)?,
+        "LOCAL-010" => solve_local_010(&repo)?,
         _ => {
             return Ok(LocalProblemRun {
                 id: run_id(&inspection.repo_path, &problem.id),
@@ -278,7 +288,7 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             "Extraer builders o helpers deterministicos restantes sin cambiar API ni prompts.",
             "agent/local-001-dieta-clinical-intent-py-fase-3",
             "LOCAL-001 diet clinical_intent helpers",
-            &["clinical_intent.py"],
+            &["clinical_intent"],
             &["clinical_intent"],
             &["check:api", "check:contract"],
             &["prompt", "endpoint nuevo", "openapi"],
@@ -289,10 +299,10 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             "Mover enums/tipos auxiliares a modulo de dominio pequeno sin cambiar SQLAlchemy ni migraciones.",
             "agent/local-002-adelgazar-clinical-record-py",
             "LOCAL-002 slim clinical_record domain types",
-            &["clinical_record.py"],
+            &["clinical_record"],
             &["clinical_record"],
             &["check:api"],
-            &["sqlalchemy", "migration", "alembic", "table", "column"],
+            &["migration", "alembic"],
         ),
         spec(
             "LOCAL-003",
@@ -311,7 +321,7 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             "Mantenerlo como orquestador; extraer cabecera/estado operativo si aplica.",
             "agent/local-004-adelgazar-patient-ai-chart-pages",
             "LOCAL-004 slim patient ai chart pages",
-            &["patient-ai-chart-pages.tsx"],
+            &["patient-ai-chart"],
             &["patient-ai-chart"],
             &["check:web", "check:size"],
             &["endpoint", "dashboard", "rag"],
@@ -333,8 +343,8 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             "Extraer solo un workspace claro, por ejemplo auditoria o sugerencias IA. Refactor puro.",
             "agent/local-006-adelgazar-patient-record-workspaces",
             "LOCAL-006 slim patient record workspaces",
-            &["patient-record-workspaces.tsx"],
             &["patient-record-workspace"],
+            &["patient-record-workspace", "patient-record-audit-workspace"],
             &["check:web"],
             &["endpoint", "permission", "route"],
         ),
@@ -344,7 +354,7 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             "Separar lista y formulario de cita sin tocar permisos ni endpoints.",
             "agent/local-007-dieta-ambulatory-appointment-pages",
             "LOCAL-007 split ambulatory appointment pages",
-            &["ambulatory-appointment-pages.tsx"],
+            &["ambulatory-appointment"],
             &["ambulatory-appointment"],
             &["check:web"],
             &["endpoint", "permission", "permiso"],
@@ -355,7 +365,7 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             "Extraer panel de preconsulta o cierre ambulatorio, sin cambiar enfermeria/permisos.",
             "agent/local-008-dieta-ambulatory-visit-pages",
             "LOCAL-008 split ambulatory visit pages",
-            &["ambulatory-visit-pages.tsx"],
+            &["ambulatory-visit"],
             &["ambulatory-visit"],
             &["check:web", "check:e2e"],
             &["endpoint", "permission", "enfermeria"],
@@ -366,8 +376,8 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             "Verificar que no haya contaminacion de nombres/proyectos externos y dividir datos demo si el archivo sigue creciendo.",
             "agent/local-009-revisar-demo-record",
             "LOCAL-009 review demo record",
-            &["demo-record.ts"],
             &["demo-record"],
+            &["demo-record", "demo-hospital-record"],
             &["check:web"],
             &["real patient", "phi", "externo"],
         ),
@@ -377,12 +387,98 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             "Mejorar selectores Playwright ambiguos en ficha/papel sin agregar cobertura pesada.",
             "agent/local-010-robustecer-smoke-ficha",
             "LOCAL-010 harden patient chart smoke",
-            &["*.spec.ts", "*.e2e.ts", "playwright"],
-            &["smoke", "ficha", "paper", "patient", "playwright"],
+            &["clinical-smoke.spec.ts", "print-smoke.spec.ts"],
+            &["clinical-smoke.spec.ts", "print-smoke.spec.ts"],
             &["check:e2e"],
             &["coverage pesada", "new feature", "dashboard"],
         ),
     ]
+}
+
+fn solve_local_001(repo: &Path) -> Result<(), String> {
+    let source_path = repo.join("apps/api/src/oneepis_api/services/clinical_intent.py");
+    let extracted_path =
+        repo.join("apps/api/src/oneepis_api/services/clinical_intent_payload_rules.py");
+    ensure_file_missing(&extracted_path, "LOCAL-001")?;
+
+    let mut source = read_text(&source_path, "clinical_intent.py LOCAL-001")?;
+    let mut blocks = Vec::new();
+    for item in [
+        "_exam_results",
+        "_exam_marker",
+        "_exam_value",
+        "_exam_delta_finding",
+        "_medication_payload_finding",
+        "_medication_detail",
+    ] {
+        blocks.push(extract_python_block(&mut source, &format!("def {item}"))?);
+    }
+    remove_exact(
+        &mut source,
+        "from oneepis_api.services.clinical_intent_text import (\n    payload_text as _payload_text,\n)\n",
+        "import payload_text LOCAL-001",
+    )?;
+    insert_after_once(
+        &mut source,
+        "from oneepis_api.services.clinical_intent_context import (\n    clinical_intent_context_payload as _context_payload,\n)\n",
+        "from oneepis_api.services.clinical_intent_payload_rules import (\n    _exam_delta_finding,\n    _exam_marker,\n    _exam_results,\n    _exam_value,\n    _medication_payload_finding,\n)\n",
+    )?;
+    write_text(
+        &source_path,
+        normalize_python_blank_lines(&source),
+        "clinical_intent.py LOCAL-001",
+    )?;
+
+    let mut body = String::from(
+        "from __future__ import annotations\n\nfrom oneepis_api.services.clinical_intent_text import (\n    normalize_text as _normalize_text,\n)\nfrom oneepis_api.services.clinical_intent_text import (\n    payload_text as _payload_text,\n)\n\n\n",
+    );
+    body.push_str(&blocks.join("\n\n\n"));
+    body.push('\n');
+    write_text(
+        &extracted_path,
+        body,
+        "clinical_intent_payload_rules.py LOCAL-001",
+    )?;
+    Ok(())
+}
+
+fn solve_local_002(repo: &Path) -> Result<(), String> {
+    let source_path = repo.join("apps/api/src/oneepis_api/models/clinical_record.py");
+    let extracted_path = repo.join("apps/api/src/oneepis_api/models/clinical_record_enums.py");
+    ensure_file_missing(&extracted_path, "LOCAL-002")?;
+
+    let mut source = read_text(&source_path, "clinical_record.py LOCAL-002")?;
+    let mut blocks = Vec::new();
+    for item in [
+        "ClinicalEntryKind",
+        "ClinicalEntryStatus",
+        "ClinicalEventType",
+        "ClinicalEventSourceType",
+        "AllergySeverity",
+        "RecordStatus",
+        "EncounterType",
+        "EncounterStatus",
+        "AppointmentStatus",
+    ] {
+        blocks.push(extract_python_block(&mut source, &format!("class {item}"))?);
+    }
+    remove_exact(&mut source, "import enum\n", "import enum LOCAL-002")?;
+    insert_after_once(
+        &mut source,
+        "from oneepis_api.models.base import IdMixin, TimestampMixin\n",
+        "from oneepis_api.models.clinical_record_enums import (\n    AllergySeverity,\n    AppointmentStatus,\n    ClinicalEntryKind,\n    ClinicalEntryStatus,\n    ClinicalEventSourceType,\n    ClinicalEventType,\n    EncounterStatus,\n    EncounterType,\n    RecordStatus,\n)\n",
+    )?;
+    write_text(
+        &source_path,
+        normalize_python_blank_lines(&source),
+        "clinical_record.py LOCAL-002",
+    )?;
+
+    let mut body = String::from("from __future__ import annotations\n\nimport enum\n\n\n");
+    body.push_str(&blocks.join("\n\n\n"));
+    body.push('\n');
+    write_text(&extracted_path, body, "clinical_record_enums.py LOCAL-002")?;
+    Ok(())
 }
 
 fn solve_local_003(repo: &Path) -> Result<(), String> {
@@ -428,6 +524,440 @@ fn solve_local_003(repo: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn solve_local_004(repo: &Path) -> Result<(), String> {
+    let source_path = repo.join("apps/web/src/components/clinical/patient-ai-chart-pages.tsx");
+    let extracted_path =
+        repo.join("apps/web/src/components/clinical/patient-ai-chart-shell-sections.tsx");
+    ensure_file_missing(&extracted_path, "LOCAL-004")?;
+
+    let mut source = read_text(&source_path, "patient-ai-chart-pages.tsx LOCAL-004")?;
+    remove_exact(
+        &mut source,
+        "import { BackLink, PageTitle, usePatientId, usePatientRecordQuery } from \"./patient-page-shared\";\n",
+        "patient-page-shared import LOCAL-004",
+    )?;
+    insert_after_once(
+        &mut source,
+        "import { DraftSoapPaper } from \"@/components/clinical/ai-chart/draft-soap-paper\";\n",
+        "import { AiChartPageHeader } from \"@/components/clinical/patient-ai-chart-shell-sections\";\n",
+    )?;
+    insert_after_once(
+        &mut source,
+        "import type {\n  ClinicalIntentAction,\n  ClinicalIntentResponse,\n  ClinicalIntentRouteResponse,\n  ClinicalIntentType,\n  ClinicalReviewItem,\n  DraftSoapFromEventsResponse,\n  AIStreamEvent,\n} from \"@/lib/types\";\n",
+        "\nimport { usePatientId, usePatientRecordQuery } from \"./patient-page-shared\";\n",
+    )?;
+    let header_block = "        <BackLink href={`/pacientes/${patientId}/ficha`} label=\"Ficha\" />\n        <PageTitle\n          title=\"AI-Chart Core\"\n          description=\"Eventos clinicos -> contexto -> borrador SOAP editable -> confirmacion humana.\"\n        />\n        {DEMO_MODE ? <ErrorState description=\"El modo demo no permite generar borradores reales.\" /> : null}\n        {!DEMO_MODE && !userLoading && !canUseAi ? (\n          <ErrorState description=\"Tu rol actual no permite usar IA clinica.\" />\n        ) : null}\n";
+    replace_exact(
+        &mut source,
+        header_block,
+        "        <AiChartPageHeader patientId={patientId} userLoading={userLoading} canUseAi={canUseAi} />\n",
+        "header block LOCAL-004",
+    )?;
+    write_text(
+        &source_path,
+        normalize_blank_lines(&source),
+        "patient-ai-chart-pages.tsx LOCAL-004",
+    )?;
+
+    let body = "\"use client\";\n\nimport { ErrorState } from \"@/components/clinical/states\";\nimport { DEMO_MODE } from \"@/lib/api/client\";\n\nimport { BackLink, PageTitle } from \"./patient-page-shared\";\n\nexport function AiChartPageHeader({\n  patientId,\n  userLoading,\n  canUseAi,\n}: {\n  patientId: string;\n  userLoading: boolean;\n  canUseAi: boolean;\n}) {\n  return (\n    <>\n      <BackLink href={`/pacientes/${patientId}/ficha`} label=\"Ficha\" />\n      <PageTitle\n        title=\"AI-Chart Core\"\n        description=\"Eventos clinicos -> contexto -> borrador SOAP editable -> confirmacion humana.\"\n      />\n      {DEMO_MODE ? <ErrorState description=\"El modo demo no permite generar borradores reales.\" /> : null}\n      {!DEMO_MODE && !userLoading && !canUseAi ? (\n        <ErrorState description=\"Tu rol actual no permite usar IA clinica.\" />\n      ) : null}\n    </>\n  );\n}\n";
+    write_text(
+        &extracted_path,
+        body.to_string(),
+        "patient-ai-chart-shell-sections.tsx LOCAL-004",
+    )?;
+    Ok(())
+}
+
+fn solve_local_005(repo: &Path) -> Result<(), String> {
+    let source_path =
+        repo.join("apps/web/src/components/clinical/ai-chart/assistant-read-sections.tsx");
+    let dir = source_path
+        .parent()
+        .ok_or_else(|| "Ruta Assistant Read invalida.".to_string())?;
+    let module_paths = [
+        "assistant-read-state.tsx",
+        "assistant-read-source-line.tsx",
+        "assistant-read-footnotes.tsx",
+        "assistant-read-timeline-section.tsx",
+        "assistant-read-search-section.tsx",
+        "assistant-read-series-section.tsx",
+        "assistant-read-correlation-section.tsx",
+    ];
+    for file in module_paths {
+        ensure_file_missing(&dir.join(file), "LOCAL-005")?;
+    }
+
+    let mut source = read_text(&source_path, "assistant-read-sections.tsx LOCAL-005")?;
+    let panel_state = export_function(extract_function_block(&mut source, "PanelState")?);
+    let timeline = export_function(extract_function_block(&mut source, "TimelineList")?);
+    let search = export_function(extract_function_block(&mut source, "SearchList")?);
+    let series_chart = export_function(extract_function_block(&mut source, "SeriesChart")?);
+    let series_list = export_function(extract_function_block(&mut source, "SeriesList")?);
+    let lab_panels = export_function(extract_function_block(&mut source, "LabPanelList")?);
+    let correlation = export_function(extract_function_block(&mut source, "CorrelationList")?);
+    let evidence = export_function(extract_function_block(&mut source, "EvidenceList")?);
+    let source_line = export_function(extract_function_block(&mut source, "SourceLine")?);
+    let source_text = export_function(extract_function_block(&mut source, "sourceText")?);
+    let source_href = export_function(extract_function_block(&mut source, "sourceHref")?);
+    let footnotes = export_function(extract_function_block(&mut source, "DataFootnotes")?);
+
+    write_text(
+        &dir.join("assistant-read-state.tsx"),
+        format!(
+            "\"use client\";\n\nimport type {{ ReactNode }} from \"react\";\n\nimport {{ EmptyState, ErrorState }} from \"@/components/clinical/states\";\n\n{panel_state}\n"
+        ),
+        "assistant-read-state.tsx LOCAL-005",
+    )?;
+    write_text(
+        &dir.join("assistant-read-source-line.tsx"),
+        format!(
+            "\"use client\";\n\nimport {{ API_BASE_URL }} from \"@/lib/api/client\";\n\n{source_line}\n\n{source_text}\n\n{source_href}\n"
+        ),
+        "assistant-read-source-line.tsx LOCAL-005",
+    )?;
+    write_text(
+        &dir.join("assistant-read-footnotes.tsx"),
+        format!("\"use client\";\n\n{footnotes}\n"),
+        "assistant-read-footnotes.tsx LOCAL-005",
+    )?;
+    write_text(
+        &dir.join("assistant-read-timeline-section.tsx"),
+        format!(
+            "\"use client\";\n\nimport {{ formatDateTime }} from \"@/components/clinical/date-format\";\nimport {{ Badge }} from \"@/components/ui/badge\";\nimport type {{ AssistantTimelineItem }} from \"@/lib/types\";\n\nimport {{ SourceLine }} from \"./assistant-read-source-line\";\n\n{timeline}\n"
+        ),
+        "assistant-read-timeline-section.tsx LOCAL-005",
+    )?;
+    write_text(
+        &dir.join("assistant-read-search-section.tsx"),
+        format!(
+            "\"use client\";\n\nimport {{ formatDateTime }} from \"@/components/clinical/date-format\";\nimport {{ Badge }} from \"@/components/ui/badge\";\nimport type {{ AssistantSearchResult }} from \"@/lib/types\";\n\nimport {{ SourceLine }} from \"./assistant-read-source-line\";\n\n{search}\n"
+        ),
+        "assistant-read-search-section.tsx LOCAL-005",
+    )?;
+    write_text(
+        &dir.join("assistant-read-series-section.tsx"),
+        format!(
+            "\"use client\";\n\nimport {{ Line, LineChart, Tooltip, XAxis, YAxis }} from \"recharts\";\n\nimport {{ formatDateTime }} from \"@/components/clinical/date-format\";\nimport {{ EmptyState }} from \"@/components/clinical/states\";\nimport {{ Badge }} from \"@/components/ui/badge\";\nimport type {{ AssistantChartSeries, LabPanel }} from \"@/lib/types\";\n\nimport {{ SourceLine }} from \"./assistant-read-source-line\";\n\n{series_chart}\n\n{series_list}\n\n{lab_panels}\n"
+        ),
+        "assistant-read-series-section.tsx LOCAL-005",
+    )?;
+    write_text(
+        &dir.join("assistant-read-correlation-section.tsx"),
+        format!(
+            "\"use client\";\n\nimport {{ formatDateTime }} from \"@/components/clinical/date-format\";\nimport {{ Badge }} from \"@/components/ui/badge\";\nimport type {{ AssistantCorrelationEvidence, AssistantCorrelationResult }} from \"@/lib/types\";\n\nimport {{ DataFootnotes }} from \"./assistant-read-footnotes\";\nimport {{ sourceText }} from \"./assistant-read-source-line\";\n\n{correlation}\n\n{evidence}\n"
+        ),
+        "assistant-read-correlation-section.tsx LOCAL-005",
+    )?;
+    write_text(
+        &source_path,
+        "\"use client\";\n\nexport { DataFootnotes } from \"./assistant-read-footnotes\";\nexport { CorrelationList } from \"./assistant-read-correlation-section\";\nexport { SearchList } from \"./assistant-read-search-section\";\nexport { SeriesChart, SeriesList, LabPanelList } from \"./assistant-read-series-section\";\nexport { PanelState } from \"./assistant-read-state\";\nexport { TimelineList } from \"./assistant-read-timeline-section\";\n",
+        "assistant-read-sections.tsx LOCAL-005",
+    )?;
+    Ok(())
+}
+
+fn solve_local_006(repo: &Path) -> Result<(), String> {
+    let source_path = repo.join("apps/web/src/components/clinical/patient-record-workspaces.tsx");
+    let extracted_path =
+        repo.join("apps/web/src/components/clinical/patient-record-audit-workspace.tsx");
+    ensure_file_missing(&extracted_path, "LOCAL-006")?;
+
+    let mut source = read_text(&source_path, "patient-record-workspaces.tsx LOCAL-006")?;
+    let audit_workspace = export_function(extract_function_block(&mut source, "AuditWorkspace")?);
+    remove_exact(
+        &mut source,
+        "import { AuditTimeline } from \"@/components/clinical/audit-widgets\";\n",
+        "AuditTimeline import LOCAL-006",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { listAuditEvents, listClinicalEncounters, listVitalSigns } from \"@/lib/api/clinical-record\";\n",
+        "import { listClinicalEncounters, listVitalSigns } from \"@/lib/api/clinical-record\";\n",
+        "clinical-record import LOCAL-006",
+    )?;
+    insert_after_once(
+        &mut source,
+        "import { NoPermissionButton } from \"./patient-page-shared\";\n",
+        "export { AuditWorkspace } from \"./patient-record-audit-workspace\";\n",
+    )?;
+    write_text(
+        &source_path,
+        normalize_blank_lines(&source),
+        "patient-record-workspaces.tsx LOCAL-006",
+    )?;
+
+    let body = format!(
+        "\"use client\";\n\nimport {{ useQuery }} from \"@tanstack/react-query\";\n\nimport {{ AuditTimeline }} from \"@/components/clinical/audit-widgets\";\nimport {{ ClinicalSectionCard }} from \"@/components/clinical/cards\";\nimport {{ EmptyState, ErrorState, LoadingRows }} from \"@/components/clinical/states\";\nimport {{ listAuditEvents }} from \"@/lib/api/clinical-record\";\nimport {{ DEMO_MODE }} from \"@/lib/api/client\";\n\n{audit_workspace}\n"
+    );
+    write_text(
+        &extracted_path,
+        body,
+        "patient-record-audit-workspace.tsx LOCAL-006",
+    )?;
+    Ok(())
+}
+
+fn solve_local_007(repo: &Path) -> Result<(), String> {
+    let source_path =
+        repo.join("apps/web/src/components/clinical/ambulatory-appointment-pages.tsx");
+    let list_path = repo.join("apps/web/src/components/clinical/ambulatory-appointment-list.tsx");
+    let form_path = repo.join("apps/web/src/components/clinical/ambulatory-appointment-form.tsx");
+    ensure_file_missing(&list_path, "LOCAL-007")?;
+    ensure_file_missing(&form_path, "LOCAL-007")?;
+
+    let mut source = read_text(&source_path, "ambulatory-appointment-pages.tsx LOCAL-007")?;
+    let form_type = extract_ts_type_block(&mut source, "AppointmentFormState")?;
+    let status_label = extract_ts_const_object(&mut source, "statusLabel")?;
+    let appointment_list = export_function(extract_function_block(&mut source, "AppointmentList")?);
+    let create_panel = export_function(extract_function_block(
+        &mut source,
+        "AppointmentCreatePanel",
+    )?);
+    let appointment_input = extract_function_block(&mut source, "AppointmentInput")?;
+    let empty_form = extract_function_block(&mut source, "emptyAppointmentForm")?;
+    let patient_name_map = extract_function_block(&mut source, "patientNameMap")?;
+
+    replace_exact(
+        &mut source,
+        "import Link from \"next/link\";\n",
+        "",
+        "Link import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { useMemo, useState } from \"react\";\n",
+        "import { useState } from \"react\";\n",
+        "react import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { useMutation, useQuery, useQueryClient } from \"@tanstack/react-query\";\n",
+        "import { useQuery } from \"@tanstack/react-query\";\n",
+        "query import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { CalendarPlus, Save } from \"lucide-react\";\n\n",
+        "",
+        "icons import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { useCurrentUser } from \"@/components/auth/use-current-user\";\n",
+        "",
+        "current user import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { formatDateTime } from \"@/components/clinical/date-format\";\n",
+        "",
+        "formatDateTime import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { EmptyState, ErrorState, LoadingRows } from \"@/components/clinical/states\";\n",
+        "import { ErrorState, LoadingRows } from \"@/components/clinical/states\";\n",
+        "states import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { Badge } from \"@/components/ui/badge\";\n",
+        "",
+        "badge import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { Button } from \"@/components/ui/button\";\n",
+        "",
+        "button import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { Textarea } from \"@/components/ui/textarea\";\n",
+        "",
+        "textarea import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { listAppointments, createPatientAppointment } from \"@/lib/api/appointments\";\n",
+        "import { listAppointments } from \"@/lib/api/appointments\";\n",
+        "appointments import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { canManageEncounters } from \"@/lib/permissions\";\n",
+        "",
+        "permissions import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import type { ClinicalAppointment, Patient } from \"@/lib/types\";\n",
+        "",
+        "types import LOCAL-007",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { Field, emptyToNull, toDatetimeLocal } from \"./patient-page-shared\";\n",
+        "import { AppointmentCreatePanel } from \"./ambulatory-appointment-form\";\nimport { AppointmentList } from \"./ambulatory-appointment-list\";\nimport { Field } from \"./patient-page-shared\";\n",
+        "shared import LOCAL-007",
+    )?;
+    write_text(
+        &source_path,
+        normalize_blank_lines(&source),
+        "ambulatory-appointment-pages.tsx LOCAL-007",
+    )?;
+
+    write_text(
+        &list_path,
+        format!(
+            "\"use client\";\n\nimport Link from \"next/link\";\nimport {{ useMemo }} from \"react\";\n\nimport {{ formatDateTime }} from \"@/components/clinical/date-format\";\nimport {{ EmptyState }} from \"@/components/clinical/states\";\nimport {{ Badge }} from \"@/components/ui/badge\";\nimport {{ Button }} from \"@/components/ui/button\";\nimport type {{ ClinicalAppointment, Patient }} from \"@/lib/types\";\n\n{status_label}\n\n{appointment_list}\n\n{patient_name_map}\n"
+        ),
+        "ambulatory-appointment-list.tsx LOCAL-007",
+    )?;
+    write_text(
+        &form_path,
+        format!(
+            "\"use client\";\n\nimport {{ useState }} from \"react\";\nimport {{ useMutation, useQueryClient }} from \"@tanstack/react-query\";\nimport {{ CalendarPlus, Save }} from \"lucide-react\";\n\nimport {{ useCurrentUser }} from \"@/components/auth/use-current-user\";\nimport {{ ClinicalSectionCard }} from \"@/components/clinical/cards\";\nimport {{ EmptyState, ErrorState }} from \"@/components/clinical/states\";\nimport {{ Button }} from \"@/components/ui/button\";\nimport {{ Input }} from \"@/components/ui/input\";\nimport {{ Textarea }} from \"@/components/ui/textarea\";\nimport {{ createPatientAppointment }} from \"@/lib/api/appointments\";\nimport {{ DEMO_MODE }} from \"@/lib/api/client\";\nimport {{ canManageEncounters }} from \"@/lib/permissions\";\nimport type {{ Patient }} from \"@/lib/types\";\n\nimport {{ Field, emptyToNull, toDatetimeLocal }} from \"./patient-page-shared\";\n\n{form_type}\n\n{create_panel}\n\n{appointment_input}\n\n{empty_form}\n"
+        ),
+        "ambulatory-appointment-form.tsx LOCAL-007",
+    )?;
+    Ok(())
+}
+
+fn solve_local_008(repo: &Path) -> Result<(), String> {
+    let source_path = repo.join("apps/web/src/components/clinical/ambulatory-visit-pages.tsx");
+    let form_path = repo.join("apps/web/src/components/clinical/ambulatory-visit-form.tsx");
+    ensure_file_missing(&form_path, "LOCAL-008")?;
+
+    let mut source = read_text(&source_path, "ambulatory-visit-pages.tsx LOCAL-008")?;
+    let form_type = extract_ts_type_block(&mut source, "AmbulatoryVisitFormState")?;
+    let form = export_function(extract_function_block(&mut source, "AmbulatoryVisitForm")?);
+    let soap_field = extract_function_block(&mut source, "SoapField")?;
+    replace_exact(
+        &mut source,
+        "import { Save } from \"lucide-react\";\n\n",
+        "",
+        "Save import LOCAL-008",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { Button } from \"@/components/ui/button\";\n",
+        "",
+        "Button import LOCAL-008",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { Input } from \"@/components/ui/input\";\n",
+        "",
+        "Input import LOCAL-008",
+    )?;
+    replace_exact(
+        &mut source,
+        "import { Textarea } from \"@/components/ui/textarea\";\n",
+        "",
+        "Textarea import LOCAL-008",
+    )?;
+    replace_exact(&mut source, "  Field,\n", "", "Field import LOCAL-008")?;
+    insert_after_once(
+        &mut source,
+        "import type { ClinicalEntry, PatientRecordSnapshot } from \"@/lib/types\";\n\n",
+        "import { AmbulatoryVisitForm, type AmbulatoryVisitFormState } from \"./ambulatory-visit-form\";\n",
+    )?;
+    write_text(
+        &source_path,
+        normalize_blank_lines(&source),
+        "ambulatory-visit-pages.tsx LOCAL-008",
+    )?;
+
+    write_text(
+        &form_path,
+        format!(
+            "\"use client\";\n\nimport {{ Save }} from \"lucide-react\";\n\nimport {{ Button }} from \"@/components/ui/button\";\nimport {{ Input }} from \"@/components/ui/input\";\nimport {{ Textarea }} from \"@/components/ui/textarea\";\n\nimport {{ Field }} from \"./patient-page-shared\";\n\nexport {form_type}\n\n{form}\n\n{soap_field}\n"
+        ),
+        "ambulatory-visit-form.tsx LOCAL-008",
+    )?;
+    Ok(())
+}
+
+fn solve_local_009(repo: &Path) -> Result<(), String> {
+    let source_path = repo.join("apps/web/src/lib/demo-record.ts");
+    let extracted_path = repo.join("apps/web/src/lib/demo-hospital-record.ts");
+    ensure_file_missing(&extracted_path, "LOCAL-009")?;
+
+    let mut source = read_text(&source_path, "demo-record.ts LOCAL-009")?;
+    let beds = extract_ts_const_array(&mut source, "demoHospitalBeds")?;
+    let sheets = extract_ts_const_array(&mut source, "demoHospitalDailySheets")?;
+    let indications = extract_ts_const_array(&mut source, "demoHospitalIndications")?;
+    replace_exact(
+        &mut source,
+        "  HospitalBed,\n  HospitalDailySheet,\n  HospitalIndication,\n",
+        "",
+        "hospital types LOCAL-009",
+    )?;
+    insert_after_once(
+        &mut source,
+        "} from \"@/lib/types\";\n",
+        "\nexport { demoHospitalBeds, demoHospitalDailySheets, demoHospitalIndications } from \"./demo-hospital-record\";\n",
+    )?;
+    write_text(
+        &source_path,
+        normalize_blank_lines(&source),
+        "demo-record.ts LOCAL-009",
+    )?;
+
+    write_text(
+        &extracted_path,
+        format!(
+            "import type {{ HospitalBed, HospitalDailySheet, HospitalIndication }} from \"@/lib/types\";\n\n{beds}\n\n{sheets}\n\n{indications}\n"
+        ),
+        "demo-hospital-record.ts LOCAL-009",
+    )?;
+    Ok(())
+}
+
+fn solve_local_010(repo: &Path) -> Result<(), String> {
+    let clinical_smoke = repo.join("apps/web/tests/e2e/clinical-smoke.spec.ts");
+    let print_smoke = repo.join("apps/web/tests/e2e/print-smoke.spec.ts");
+    let mut clinical = read_text(&clinical_smoke, "clinical-smoke.spec.ts LOCAL-010")?;
+    for (from, to) in [
+        (
+            "page.getByText(\"Fuentes usadas\")",
+            "page.getByText(\"Fuentes usadas\", { exact: true })",
+        ),
+        (
+            "page.getByText(\"Riesgos clinicos\")",
+            "page.getByText(\"Riesgos clinicos\", { exact: true })",
+        ),
+        (
+            "page.getByText(\"Limites visibles y faltantes\")",
+            "page.getByText(\"Limites visibles y faltantes\", { exact: true })",
+        ),
+    ] {
+        replace_exact(&mut clinical, from, to, "clinical smoke selector LOCAL-010")?;
+    }
+    write_text(
+        &clinical_smoke,
+        clinical,
+        "clinical-smoke.spec.ts LOCAL-010",
+    )?;
+
+    let mut print = read_text(&print_smoke, "print-smoke.spec.ts LOCAL-010")?;
+    for (from, to) in [
+        (
+            "page.getByText(\"Vista papel\")",
+            "page.getByText(\"Vista papel\", { exact: true })",
+        ),
+        (
+            "page.getByText(\"Documento de desarrollo / no uso clinico real.\")",
+            "page.getByText(\"Documento de desarrollo / no uso clinico real.\", { exact: true })",
+        ),
+    ] {
+        replace_exact(&mut print, from, to, "print smoke selector LOCAL-010")?;
+    }
+    write_text(&print_smoke, print, "print-smoke.spec.ts LOCAL-010")?;
+    Ok(())
+}
+
 fn export_function(block: String) -> String {
     if block.starts_with("function ") {
         block.replacen("function ", "export function ", 1)
@@ -438,9 +968,12 @@ fn export_function(block: String) -> String {
 
 fn extract_function_block(source: &mut String, function_name: &str) -> Result<String, String> {
     let signature = format!("function {function_name}");
-    let start = source
+    let mut start = source
         .find(&signature)
         .ok_or_else(|| format!("No se encontro funcion {function_name} para extraer."))?;
+    if start >= "export ".len() && &source[start - "export ".len()..start] == "export " {
+        start -= "export ".len();
+    }
     let params_open = source[start..]
         .find('(')
         .map(|offset| start + offset)
@@ -494,6 +1027,196 @@ fn matching_paren(source: &str, open: usize) -> Option<usize> {
         }
     }
     None
+}
+
+fn matching_delimiter(source: &str, open: usize, start: char, end: char) -> Option<usize> {
+    let mut depth = 0i32;
+    for (index, ch) in source[open..].char_indices() {
+        if ch == start {
+            depth += 1;
+        } else if ch == end {
+            depth -= 1;
+            if depth == 0 {
+                return Some(open + index);
+            }
+        }
+    }
+    None
+}
+
+fn extract_python_block(source: &mut String, header: &str) -> Result<String, String> {
+    let start = source
+        .find(header)
+        .ok_or_else(|| format!("No se encontro bloque Python {header}."))?;
+    let mut end = start;
+    let mut depth = 0i32;
+    let mut header_complete = false;
+    while end < source.len() {
+        let next = source[end..]
+            .find('\n')
+            .map(|offset| end + offset + 1)
+            .unwrap_or(source.len());
+        let line = &source[end..next];
+        for ch in line.chars() {
+            match ch {
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth -= 1,
+                _ => {}
+            }
+        }
+        end = next;
+        if depth <= 0 && line.trim_end().ends_with(':') {
+            header_complete = true;
+            break;
+        }
+    }
+    if !header_complete {
+        return Err(format!("Bloque Python {header} no cierra encabezado."));
+    }
+    while end < source.len() {
+        let next = source[end..]
+            .find('\n')
+            .map(|offset| end + offset + 1)
+            .unwrap_or(source.len());
+        let line = &source[end..next];
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && !line.starts_with(' ') && !line.starts_with('\t') {
+            break;
+        }
+        end = next;
+    }
+    let block = source[start..end].trim_end().to_string();
+    source.replace_range(start..end, "");
+    Ok(block)
+}
+
+fn extract_ts_type_block(source: &mut String, type_name: &str) -> Result<String, String> {
+    let marker = format!("type {type_name}");
+    let start = source
+        .find(&marker)
+        .ok_or_else(|| format!("No se encontro tipo TS {type_name}."))?;
+    let end = source[start..]
+        .find("};")
+        .map(|offset| start + offset + 2)
+        .ok_or_else(|| format!("Tipo TS {type_name} no cierra."))?;
+    let block = source[start..end].trim_end().to_string();
+    let mut remove_end = end;
+    while source[remove_end..].starts_with('\n') || source[remove_end..].starts_with('\r') {
+        remove_end += source[remove_end..]
+            .chars()
+            .next()
+            .map(char::len_utf8)
+            .unwrap_or(0);
+    }
+    source.replace_range(start..remove_end, "");
+    Ok(block)
+}
+
+fn extract_ts_const_object(source: &mut String, const_name: &str) -> Result<String, String> {
+    extract_ts_const_delimited(source, const_name, '{', '}')
+}
+
+fn extract_ts_const_array(source: &mut String, const_name: &str) -> Result<String, String> {
+    extract_ts_const_delimited(source, const_name, '[', ']')
+}
+
+fn extract_ts_const_delimited(
+    source: &mut String,
+    const_name: &str,
+    start_char: char,
+    end_char: char,
+) -> Result<String, String> {
+    let marker = format!("export const {const_name}");
+    let start = source
+        .find(&marker)
+        .or_else(|| source.find(&format!("const {const_name}")))
+        .ok_or_else(|| format!("No se encontro const TS {const_name}."))?;
+    let equal = source[start..]
+        .find('=')
+        .map(|offset| start + offset)
+        .ok_or_else(|| format!("Const TS {const_name} no tiene asignacion."))?;
+    let open = source[equal..]
+        .find(start_char)
+        .map(|offset| equal + offset)
+        .ok_or_else(|| format!("Const TS {const_name} no abre bloque."))?;
+    let close = matching_delimiter(source, open, start_char, end_char)
+        .ok_or_else(|| format!("Const TS {const_name} no cierra bloque."))?;
+    let end = if source[close..].starts_with(&format!("{end_char};")) {
+        close + end_char.len_utf8() + 1
+    } else {
+        close + end_char.len_utf8()
+    };
+    let block = source[start..end].trim_end().to_string();
+    let mut remove_end = end;
+    while source[remove_end..].starts_with('\n') || source[remove_end..].starts_with('\r') {
+        remove_end += source[remove_end..]
+            .chars()
+            .next()
+            .map(char::len_utf8)
+            .unwrap_or(0);
+    }
+    source.replace_range(start..remove_end, "");
+    Ok(block)
+}
+
+fn ensure_file_missing(path: &Path, label: &str) -> Result<(), String> {
+    if path.exists() {
+        return Err(format!(
+            "El archivo {} ya existe; {label} no sobrescribe.",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn read_text(path: &Path, label: &str) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|err| format!("No se pudo leer {label}: {err}"))
+}
+
+fn write_text(path: &Path, content: impl AsRef<str>, label: &str) -> Result<(), String> {
+    fs::write(path, content.as_ref()).map_err(|err| format!("No se pudo escribir {label}: {err}"))
+}
+
+fn remove_exact(source: &mut String, needle: &str, label: &str) -> Result<(), String> {
+    replace_exact(source, needle, "", label)
+}
+
+fn replace_exact(
+    source: &mut String,
+    needle: &str,
+    replacement: &str,
+    label: &str,
+) -> Result<(), String> {
+    if !source.contains(needle) {
+        return Err(format!("No se encontro bloque esperado para {label}."));
+    }
+    *source = source.replacen(needle, replacement, 1);
+    Ok(())
+}
+
+fn insert_after_once(source: &mut String, anchor: &str, insertion: &str) -> Result<(), String> {
+    if source.contains(insertion) {
+        return Ok(());
+    }
+    let replacement = format!("{anchor}{insertion}");
+    replace_exact(source, anchor, &replacement, "insert_after_once")
+}
+
+fn normalize_blank_lines(source: &str) -> String {
+    let mut out = source.replace("\r\n", "\n").replace('\r', "\n");
+    out = out.replace("\n\n\n", "\n\n");
+    while out.contains("\n\n\n") {
+        out = out.replace("\n\n\n", "\n\n");
+    }
+    out
+}
+
+fn normalize_python_blank_lines(source: &str) -> String {
+    let mut out = source.replace("\r\n", "\n").replace('\r', "\n");
+    while out.contains("\n\n\n\n") {
+        out = out.replace("\n\n\n\n", "\n\n\n");
+    }
+    out
 }
 
 fn spec(
@@ -605,9 +1328,22 @@ fn ensure_problem_branch(
     if git(repo, &["rev-parse", "--verify", target_branch]).is_ok() {
         git(repo, &["switch", target_branch])?;
     } else {
+        let base_branch = local_problem_base_branch(repo, current_branch);
+        if current_branch != base_branch {
+            git(repo, &["switch", &base_branch])?;
+        }
         git(repo, &["switch", "-c", target_branch])?;
     }
     Ok(target_branch.to_string())
+}
+
+fn local_problem_base_branch(repo: &Path, current_branch: &str) -> String {
+    for candidate in ["main", "master"] {
+        if git(repo, &["rev-parse", "--verify", candidate]).is_ok() {
+            return candidate.to_string();
+        }
+    }
+    current_branch.to_string()
 }
 
 fn changed_files(repo: &Path) -> Result<Vec<String>, String> {
@@ -659,22 +1395,13 @@ fn validate_changed_files(problem: &LocalProblemSpec, files: &[String]) -> Vec<S
 fn validate_diff_content(
     repo: &Path,
     problem: &LocalProblemSpec,
-    files: &[String],
+    _files: &[String],
 ) -> Result<Vec<String>, String> {
     let mut content = diff_signal_lines(&git(repo, &["diff", "--unified=0", "--"])?);
     content.push_str(&diff_signal_lines(&git(
         repo,
         &["diff", "--cached", "--unified=0", "--"],
     )?));
-    for file in files {
-        let path = repo.join(file);
-        if path.is_file() {
-            if let Ok(text) = fs::read_to_string(path) {
-                content.push('\n');
-                content.push_str(&text);
-            }
-        }
-    }
     let lower = content.to_ascii_lowercase();
     Ok(problem
         .forbidden_signals
@@ -686,10 +1413,8 @@ fn validate_diff_content(
 
 fn diff_signal_lines(diff: &str) -> String {
     diff.lines()
-        .filter(|line| {
-            (line.starts_with('+') && !line.starts_with("+++"))
-                || (line.starts_with('-') && !line.starts_with("---"))
-        })
+        .filter(|line| line.starts_with('+') && !line.starts_with("+++"))
+        .map(|line| line.trim_start_matches('+'))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -697,6 +1422,24 @@ fn diff_signal_lines(diff: &str) -> String {
 fn git_add_files(repo: &Path, files: &[String]) -> Result<(), String> {
     let mut args = vec!["add", "--"];
     args.extend(files.iter().map(String::as_str));
+    git(repo, &args)?;
+    Ok(())
+}
+
+fn restore_gate_artifacts(repo: &Path, allowed_files: &[String]) -> Result<(), String> {
+    let allowed = allowed_files
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let generated = changed_files(repo)?
+        .into_iter()
+        .filter(|file| !allowed.contains(file.as_str()))
+        .collect::<Vec<_>>();
+    if generated.is_empty() {
+        return Ok(());
+    }
+    let mut args = vec!["restore", "--"];
+    args.extend(generated.iter().map(String::as_str));
     git(repo, &args)?;
     Ok(())
 }

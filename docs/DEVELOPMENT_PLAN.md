@@ -49,7 +49,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Show governed autonomy explicitly: inspect, plan, draft, review, run gates, and prepare controlled apply only when OneEpis rules allow it.
 - Treat OneEpis warnings as visible guidance and hard blocks as stop conditions with concrete repair actions.
 - Maintain a governed `LOCAL-001..LOCAL-010` catalog for simple diet/refactor tasks: one problem, one safe `agent/local-*` branch, one local commit, declared gates, and no automatic push.
-- Add deterministic solvers problem by problem. `LOCAL-003` is the first autonomous recipe: extract visual subpanels from `clinical-intent-result-panel.tsx`, run `check:web`, commit locally, and stop without push.
+- Maintain deterministic solvers for `LOCAL-001..LOCAL-010`: each recipe starts from a clean base branch, touches only declared surfaces, runs required gates, restores gate artifacts outside the microcycle, commits locally, and stops without push.
 
 ### v0.4.1 Usability And Clarity
 
@@ -87,7 +87,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `LocalProblemSpec`: one governed LOCAL problem with objective, branch, commit message, allowed files/surfaces, gates, forbidden signals, and instructions.
 - `LocalProblemPlan`: preflight for one LOCAL problem with blockers, warnings, next actions, and explicit no-push guarantee.
 - `LocalProblemRun`: result of preparing a safe branch or creating a local commit, including changed files, gate results, commit SHA, blockers, warnings, and no-push guarantee.
-- `solve_local_problem`: controlled autonomous execution for implemented LOCAL recipes. It must prepare the safe branch, edit only the declared surface, run declared gates, create one local commit, and never push.
+- `solve_local_problem`: controlled autonomous execution for `LOCAL-001..LOCAL-010`. It must prepare the safe branch from a clean base, edit only the declared surface, run declared gates, restore unrelated gate artifacts, create one local commit, and never push.
 - Proposals that mention files outside the governed context or gates outside the package become `needs_review`, not an approved path to PatchDraft.
 - Proposals that omit files may use a visible, deterministic fallback from safe context files; if no safe files exist, the decision stays blocked.
 

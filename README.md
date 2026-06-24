@@ -55,7 +55,7 @@ npm run agent -- local-problems
 npm run agent -- local-problem-plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
 npm run agent -- local-problem-prepare "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
 npm run agent -- local-problem-commit "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
-npm run agent -- local-problem-solve "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-003
+npm run agent -- local-problem-solve "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
 npm run agent -- run "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --max-cycles 1
 npm run agent -- report "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Preparar reporte PR gobernado"
 npm run agent -- list-runs --limit 20
@@ -87,13 +87,14 @@ Reglas fijas del modo LOCAL:
 Flujo recomendado:
 
 ```bash
-npm run agent -- local-problem-plan "<OneEpis>" --problem LOCAL-003
-npm run agent -- local-problem-prepare "<OneEpis>" --problem LOCAL-003
+npm run agent -- local-problem-plan "<OneEpis>" --problem LOCAL-001
+npm run agent -- local-problem-prepare "<OneEpis>" --problem LOCAL-001
 # el agente local realiza el refactor permitido en la rama segura
-npm run agent -- local-problem-commit "<OneEpis>" --problem LOCAL-003
+npm run agent -- local-problem-commit "<OneEpis>" --problem LOCAL-001
+npm run agent -- local-problem-solve "<OneEpis>" --problem LOCAL-001
 ```
 
-Para recetas autonomas ya implementadas, `local-problem-solve` prepara la rama, edita, ejecuta gates y crea el commit local. La primera receta autonoma es `LOCAL-003`, que extrae subpaneles visuales de `clinical-intent-result-panel.tsx` sin cambiar textos clinicos.
+`local-problem-solve` cubre `LOCAL-001..LOCAL-010`: prepara una rama local separada desde `main`, edita solo la superficie declarada, ejecuta los gates obligatorios, restaura artefactos generados fuera del microciclo, crea un commit local y se detiene sin push.
 
 La interfaz muestra la pestana `LOCAL` con selector de problema, plan, preparacion de rama, solucion autonoma y resultado de commit local.
 
