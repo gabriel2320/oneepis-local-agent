@@ -37,10 +37,7 @@ pub async fn get_ollama_status(base_url: Option<String>) -> Result<OllamaStatus,
     let base_url = normalize_base_url(base_url);
     let policy = ModelPolicy::default();
     let client = Client::new();
-    let response = client
-        .get(format!("{base_url}/api/tags"))
-        .send()
-        .await;
+    let response = client.get(format!("{base_url}/api/tags")).send().await;
 
     let Ok(response) = response else {
         return Ok(unavailable_status(base_url, policy, "Ollama no respondio."));
@@ -130,7 +127,7 @@ pub async fn ask_for_micro_plan(
             "messages": [
                 {
                     "role": "system",
-                    "content": "Eres un planificador local de desarrollo. Devuelve solo JSON compacto con objective, recommendedGate, steps, warnings, blocked. No propongas push, shell libre ni cambios fuera de gobernanza."
+                    "content": "Eres un planificador local de desarrollo. Devuelve solo JSON compacto con objective, recommendedGate, riskLevel, touchedSurfaces, requiredGates, steps, warnings, blocked. Usa riskLevel green, yellow o red. No propongas push, shell libre ni cambios fuera de gobernanza."
                 },
                 {
                     "role": "user",
@@ -172,12 +169,33 @@ fn parse_plan_content(content: &str) -> Option<MicroPlan> {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
+    let risk_level = candidate
+        .get("riskLevel")
+        .or_else(|| candidate.get("risk_level"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let touched_surfaces = string_list(
+        candidate
+            .get("touchedSurfaces")
+            .or_else(|| candidate.get("touched_surfaces")),
+    );
+    let required_gates = string_list(
+        candidate
+            .get("requiredGates")
+            .or_else(|| candidate.get("required_gates")),
+    );
     let steps = string_list(candidate.get("steps"));
     let mut warnings = string_list(candidate.get("warnings"));
     let blocked = match candidate.get("blocked") {
         Some(Value::Bool(value)) => *value,
         Some(Value::Array(values)) => {
-            warnings.extend(values.iter().filter_map(Value::as_str).map(ToString::to_string));
+            warnings.extend(
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(ToString::to_string),
+            );
             !values.is_empty()
         }
         Some(Value::String(value)) => {
@@ -192,6 +210,9 @@ fn parse_plan_content(content: &str) -> Option<MicroPlan> {
     Some(MicroPlan {
         objective,
         recommended_gate,
+        risk_level,
+        touched_surfaces,
+        required_gates,
         steps,
         warnings,
         blocked,
@@ -212,7 +233,11 @@ fn string_list(value: Option<&Value>) -> Vec<String> {
 }
 
 fn choose_planning_model(status: &OllamaStatus) -> String {
-    let available: BTreeSet<&str> = status.models.iter().map(|model| model.name.as_str()).collect();
+    let available: BTreeSet<&str> = status
+        .models
+        .iter()
+        .map(|model| model.name.as_str())
+        .collect();
     if available.contains(status.policy.governance.as_str()) {
         status.policy.governance.clone()
     } else if available.contains(status.policy.fallback.as_str()) {

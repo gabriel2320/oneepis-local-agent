@@ -10,9 +10,15 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 pub fn sanitize_log(input: &str) -> String {
     let mut output = input.to_string();
     let patterns = [
-        (r"(?i)(token|secret|password|api[_-]?key)\s*[:=]\s*[^\s,;]+", "$1=[REDACTED]"),
+        (
+            r"(?i)(token|secret|password|api[_-]?key)\s*[:=]\s*[^\s,;]+",
+            "$1=[REDACTED]",
+        ),
         (r"(?i)bearer\s+[a-z0-9._\-]+", "Bearer [REDACTED]"),
-        (r"(?i)[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}", "[REDACTED_EMAIL]"),
+        (
+            r"(?i)[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}",
+            "[REDACTED_EMAIL]",
+        ),
         (r"\b\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]\b", "[REDACTED_ID]"),
     ];
 

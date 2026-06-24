@@ -48,10 +48,83 @@ export type OllamaStatus = {
 export type MicroPlan = {
   objective: string;
   recommendedGate: string;
+  riskLevel: "green" | "yellow" | "red" | string;
+  touchedSurfaces: string[];
+  requiredGates: string[];
   steps: string[];
   warnings: string[];
   blocked: boolean;
   modelUsed: string;
+};
+
+export type PatchDraft = {
+  id: string;
+  repoPath: string;
+  objective: string;
+  summary: string;
+  rationale: string;
+  files: string[];
+  unifiedDiff: string;
+  risks: string[];
+  gates: string[];
+  blocked: boolean;
+  modelUsed: string;
+  createdAt: string;
+  plan: MicroPlan;
+};
+
+export type ReviewCheck = {
+  name: string;
+  status: "passed" | "blocked" | string;
+  detail: string;
+};
+
+export type PatchReview = {
+  draftId: string;
+  approved: boolean;
+  confirmToken: string;
+  checks: ReviewCheck[];
+  blocks: string[];
+};
+
+export type ApplyPatchRequest = {
+  draft: PatchDraft;
+  allowApply: boolean;
+  confirmToken?: string | null;
+  branchStrategy: "reuse" | "create_safe_branch";
+  databaseUrl?: string | null;
+};
+
+export type ApplyPatchResult = {
+  draftId: string;
+  status: "applied" | "blocked" | string;
+  branch: string;
+  applied: boolean;
+  messages: string[];
+};
+
+export type GateResult = {
+  gate: string;
+  command: string;
+  status: "passed" | "failed" | "blocked" | string;
+  exitCode: number;
+  durationMs: number;
+  summary: string;
+  stdout: string;
+  stderr: string;
+};
+
+export type AgentRunSummary = {
+  id: string;
+  repoPath: string;
+  branch: string;
+  modelUsed: string;
+  objective: string;
+  status: string;
+  mode: string;
+  startedAt: string;
+  completedAt: string;
+  summary: string;
 };
 
 export type AgentStep = {
@@ -76,4 +149,3 @@ export type AgentRun = {
   lessons: string[];
   persistence: string;
 };
-

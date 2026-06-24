@@ -39,10 +39,14 @@ pub async fn plan_microcycle(
 pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
     let max_cycles = request.max_cycles.unwrap_or(1).clamp(1, 3);
     let mode = request.mode.unwrap_or_else(|| "dry_run".to_string());
+    let apply_requested = request.allow_apply
+        || request.confirm_token.is_some()
+        || request.branch_strategy != "reuse";
     let started_at = Utc::now().to_rfc3339();
     let inspection = inspect_repository(&request.repo_path)?;
     let plan = plan_microcycle(&request.repo_path, &request.objective, None).await?;
-    let blocked = plan.blocked || !inspection.blocks.is_empty() || mode != "dry_run";
+    let blocked =
+        plan.blocked || !inspection.blocks.is_empty() || mode != "dry_run" || apply_requested;
     let mut steps = Vec::new();
 
     for (index, state) in STATES.iter().enumerate() {
@@ -60,15 +64,24 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
 
     let mut lessons = vec![
         "Registrar primero el contexto y la gobernanza reduce cambios innecesarios.".to_string(),
-        "La primera version ejecuta dry-run: los patches reales quedan bloqueados hasta v0.3.".to_string(),
+        "La primera version ejecuta dry-run: los patches reales quedan bloqueados hasta v0.3."
+            .to_string(),
     ];
     if inspection.is_one_epis {
-        lessons.push("OneEpis requiere microciclos pequenos y gates oficiales antes de crecer.".to_string());
+        lessons.push(
+            "OneEpis requiere microciclos pequenos y gates oficiales antes de crecer.".to_string(),
+        );
     }
     if max_cycles > 1 {
         lessons.push(format!(
             "Se pidieron {max_cycles} ciclos, pero v0.1 registra solo una pasada segura."
         ));
+    }
+    if apply_requested {
+        lessons.push(
+            "El runner dry-run no aplica cambios; usa apply_approved_patch con PatchDraft aprobado."
+                .to_string(),
+        );
     }
 
     let completed_at = Utc::now().to_rfc3339();
@@ -100,11 +113,25 @@ fn fallback_plan(inspection: &crate::agent::types::RepoInspection, objective: &s
     let recommended_gate = select_gate(&inspection.declared_gates);
     let mut warnings = inspection.blocks.clone();
     if !inspection.is_one_epis {
-        warnings.push("Repo generico: se aplican reglas basicas de safety, no doctrina OneEpis completa.".to_string());
+        warnings.push(
+            "Repo generico: se aplican reglas basicas de safety, no doctrina OneEpis completa."
+                .to_string(),
+        );
     }
     MicroPlan {
         objective: sanitize_log(objective),
-        recommended_gate,
+        recommended_gate: recommended_gate.clone(),
+        risk_level: if inspection.blocks.is_empty() {
+            "green".to_string()
+        } else {
+            "yellow".to_string()
+        },
+        touched_surfaces: vec!["governance".to_string(), "repo".to_string()],
+        required_gates: if recommended_gate == "sin_gate" {
+            Vec::new()
+        } else {
+            vec![recommended_gate]
+        },
         steps: vec![
             "Leer documentos de gobernanza detectados.".to_string(),
             "Confirmar estado Git y rama de trabajo.".to_string(),
@@ -122,25 +149,54 @@ fn normalize_plan(plan: &mut MicroPlan, declared_gates: &[String]) {
     if plan.recommended_gate.is_empty() || !declared_gates.contains(&plan.recommended_gate) {
         plan.recommended_gate = select_gate(declared_gates);
     }
+    if plan.risk_level.is_empty() {
+        plan.risk_level = if plan.blocked { "yellow" } else { "green" }.to_string();
+    }
+    if !matches!(plan.risk_level.as_str(), "green" | "yellow" | "red") {
+        plan.risk_level = "yellow".to_string();
+    }
+    if plan.required_gates.is_empty() && plan.recommended_gate != "sin_gate" {
+        plan.required_gates = vec![plan.recommended_gate.clone()];
+    }
+    plan.required_gates
+        .retain(|gate| declared_gates.contains(gate));
+    if plan.touched_surfaces.is_empty() {
+        plan.touched_surfaces = vec!["repo".to_string()];
+    }
     if plan.steps.is_empty() {
         plan.steps = vec!["Reducir el objetivo a un microciclo verificable.".to_string()];
     }
 }
 
 fn select_gate(gates: &[String]) -> String {
-    for preferred in ["check:size", "check:api", "check:web", "check", "test", "build"] {
+    for preferred in [
+        "check:size",
+        "check:api",
+        "check:web",
+        "check",
+        "test",
+        "build",
+    ] {
         if gates.iter().any(|gate| gate == preferred) {
             return preferred.to_string();
         }
     }
-    gates.first().cloned().unwrap_or_else(|| "sin_gate".to_string())
+    gates
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "sin_gate".to_string())
 }
 
 fn state_status(state: &str, blocked: bool, mode: &str) -> &'static str {
     if blocked && state == "safety_review" {
         return "blocked";
     }
-    if blocked && matches!(state, "apply_patch" | "gate_run" | "result_record" | "lesson_record" | "stop_or_next") {
+    if blocked
+        && matches!(
+            state,
+            "apply_patch" | "gate_run" | "result_record" | "lesson_record" | "stop_or_next"
+        )
+    {
         return "skipped";
     }
     if mode != "dry_run" && matches!(state, "apply_patch" | "gate_run") {
@@ -157,10 +213,17 @@ fn state_summary(
     mode: &str,
 ) -> String {
     match state {
-        "preflight" => format!("Repo {} en rama {}.", inspection.project_name, inspection.current_branch),
+        "preflight" => format!(
+            "Repo {} en rama {}.",
+            inspection.project_name, inspection.current_branch
+        ),
         "governance_read" => format!(
             "{} documentos de gobernanza presentes.",
-            inspection.governance_documents.iter().filter(|doc| doc.present).count()
+            inspection
+                .governance_documents
+                .iter()
+                .filter(|doc| doc.present)
+                .count()
         ),
         "repo_audit" => {
             if inspection.dirty {
@@ -181,7 +244,10 @@ fn state_summary(
             }
         }
         "apply_patch" => "No se aplica patch en dry-run.".to_string(),
-        "gate_run" => format!("Gate recomendado para ejecucion futura: {}.", plan.recommended_gate),
+        "gate_run" => format!(
+            "Gate recomendado para ejecucion futura: {}.",
+            plan.recommended_gate
+        ),
         "result_record" => "Resultado preparado para bitacora.".to_string(),
         "lesson_record" => "Lecciones extraidas de una pasada acotada.".to_string(),
         "stop_or_next" => format!("Parada segura; presupuesto solicitado: {max_cycles} ciclo(s)."),
@@ -193,4 +259,3 @@ fn run_id(repo_path: &str, objective: &str, started_at: &str) -> String {
     let digest = sha256_hex(format!("{repo_path}:{objective}:{started_at}").as_bytes());
     format!("run-{}", &digest[..16])
 }
-

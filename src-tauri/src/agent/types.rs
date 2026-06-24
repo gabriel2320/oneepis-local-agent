@@ -82,6 +82,12 @@ pub struct MicroPlan {
     #[serde(default, alias = "recommended_gate")]
     pub recommended_gate: String,
     #[serde(default)]
+    pub risk_level: String,
+    #[serde(default)]
+    pub touched_surfaces: Vec<String>,
+    #[serde(default)]
+    pub required_gates: Vec<String>,
+    #[serde(default)]
     pub steps: Vec<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
@@ -89,6 +95,92 @@ pub struct MicroPlan {
     pub blocked: bool,
     #[serde(default, alias = "model_used")]
     pub model_used: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchDraft {
+    pub id: String,
+    pub repo_path: String,
+    pub objective: String,
+    pub summary: String,
+    pub rationale: String,
+    pub files: Vec<String>,
+    pub unified_diff: String,
+    pub risks: Vec<String>,
+    pub gates: Vec<String>,
+    pub blocked: bool,
+    pub model_used: String,
+    pub created_at: String,
+    pub plan: MicroPlan,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewCheck {
+    pub name: String,
+    pub status: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchReview {
+    pub draft_id: String,
+    pub approved: bool,
+    pub confirm_token: String,
+    pub checks: Vec<ReviewCheck>,
+    pub blocks: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyPatchRequest {
+    pub draft: PatchDraft,
+    #[serde(default)]
+    pub allow_apply: bool,
+    pub confirm_token: Option<String>,
+    #[serde(default = "default_branch_strategy")]
+    pub branch_strategy: String,
+    pub database_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyPatchResult {
+    pub draft_id: String,
+    pub status: String,
+    pub branch: String,
+    pub applied: bool,
+    pub messages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GateResult {
+    pub gate: String,
+    pub command: String,
+    pub status: String,
+    pub exit_code: i32,
+    pub duration_ms: u128,
+    pub summary: String,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRunSummary {
+    pub id: String,
+    pub repo_path: String,
+    pub branch: String,
+    pub model_used: String,
+    pub objective: String,
+    pub status: String,
+    pub mode: String,
+    pub started_at: String,
+    pub completed_at: String,
+    pub summary: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -119,10 +211,20 @@ pub struct AgentRun {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RunRequest {
     pub repo_path: String,
     pub objective: String,
     pub max_cycles: Option<u8>,
     pub mode: Option<String>,
     pub database_url: Option<String>,
+    #[serde(default)]
+    pub allow_apply: bool,
+    pub confirm_token: Option<String>,
+    #[serde(default = "default_branch_strategy")]
+    pub branch_strategy: String,
+}
+
+fn default_branch_strategy() -> String {
+    "reuse".to_string()
 }

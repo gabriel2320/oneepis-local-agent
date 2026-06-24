@@ -1,10 +1,14 @@
 #[path = "../agent/mod.rs"]
 mod agent;
 
+use agent::gates;
 use agent::ollama;
+use agent::patch;
+use agent::persistence;
 use agent::repo;
 use agent::runner;
-use agent::types::RunRequest;
+use agent::types::{ApplyPatchRequest, PatchDraft, RunRequest};
+use std::fs;
 
 #[tokio::main]
 async fn main() {
@@ -34,6 +38,40 @@ async fn run() -> Result<(), String> {
                 .unwrap_or("Auditar y proponer el microciclo gobernado mas pequeno.");
             print_json(&runner::plan_microcycle(repo_path, objective, None).await?)?;
         }
+        "draft" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Generar PatchDraft gobernado sin escribir archivos.");
+            print_json(&patch::draft_patch(repo_path, objective, None, None).await?)?;
+        }
+        "review" => {
+            let draft = required_draft_file(&args)?;
+            print_json(&patch::review_patch(&draft)?)?;
+        }
+        "apply" => {
+            let draft = required_draft_file(&args)?;
+            let confirm_token = option_value(&args, "--confirm-token").map(ToString::to_string);
+            let branch_strategy = option_value(&args, "--branch-strategy")
+                .unwrap_or("create_safe_branch")
+                .to_string();
+            let request = ApplyPatchRequest {
+                draft,
+                allow_apply: true,
+                confirm_token,
+                branch_strategy,
+                database_url: None,
+            };
+            print_json(&patch::apply_approved_patch(request).await?)?;
+        }
+        "gate" => {
+            let repo_path = required_repo(&args)?;
+            let gate = option_value(&args, "--gate").unwrap_or("check");
+            print_json(&gates::run_gate(repo_path, gate, None, None).await?)?;
+        }
+        "list-runs" => {
+            let limit = option_value(&args, "--limit").and_then(|value| value.parse::<i64>().ok());
+            print_json(&persistence::list_runs(None, limit).await?)?;
+        }
         "run" => {
             let repo_path = required_repo(&args)?;
             let max_cycles = option_value(&args, "--max-cycles")
@@ -47,6 +85,9 @@ async fn run() -> Result<(), String> {
                 max_cycles: Some(max_cycles),
                 mode: Some("dry_run".to_string()),
                 database_url: None,
+                allow_apply: false,
+                confirm_token: None,
+                branch_strategy: "reuse".to_string(),
             };
             print_json(&runner::run_microcycle(request).await?)?;
         }
@@ -71,6 +112,16 @@ fn required_repo(args: &[String]) -> Result<&str, String> {
         .ok_or_else(|| "Falta ruta del repo objetivo.".to_string())
 }
 
+fn required_draft_file(args: &[String]) -> Result<PatchDraft, String> {
+    let path = args
+        .get(1)
+        .ok_or_else(|| "Falta ruta del archivo PatchDraft JSON.".to_string())?;
+    let text = fs::read_to_string(path)
+        .map_err(|err| format!("No se pudo leer PatchDraft JSON: {err}"))?;
+    serde_json::from_str::<PatchDraft>(&text)
+        .map_err(|err| format!("No se pudo parsear PatchDraft JSON: {err}"))
+}
+
 fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|window| window[0] == name)
@@ -86,8 +137,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent plan <repo> [--objective texto] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
             .to_string(),
     )
 }
-
