@@ -8,6 +8,7 @@ Este repo no es OneEpis, no vive dentro de OneEpis y no reemplaza la gobernanza 
 
 - Ollama local es el unico proveedor IA.
 - El agente lee gobernanza antes de proponer cambios.
+- La interfaz traduce estado tecnico a lenguaje natural en espanol: que hace, por que, siguiente accion y limite de gobernanza.
 - v0.2 genera `PatchDraft` revisable, sin escribir archivos del repo objetivo.
 - v0.3 permite aplicar patches solo con repo Git limpio, rama local segura, token de confirmacion y gate declarado.
 - No hay push automatico.
@@ -116,6 +117,23 @@ Cuando el repo objetivo es OneEpis, el agente aplica reglas deterministicas sobr
 - agrega gates oficiales segun superficie: `check:api`, `check:web`, `check:contract`, `check:e2e` o `check:size`;
 - convierte advertencias blandas de gobernanza en warnings, no en rechazo automatico.
 
+## Lenguaje Natural Y Ayudas
+
+La pantalla principal mantiene una voz operativa del agente:
+
+- explica el estado actual en espanol simple;
+- muestra la siguiente accion concreta;
+- muestra la baranda de gobernanza que limita la accion;
+- resume que poder local puede usar en ese punto del ciclo;
+- evita esconder el detalle tecnico: plan, PatchDraft, revision, gates y bitacora siguen visibles.
+
+Este sistema no aumenta permisos por fuera de gobernanza. Da mas claridad y coordina mejor los ciclos cerrados:
+
+```text
+inspeccionar -> planificar -> preparar PatchDraft -> revisar safety
+-> ejecutar gate declarado -> registrar resultado -> detener
+```
+
 ## Roadmap
 
 La hoja de ruta esta en `docs/DEVELOPMENT_PLAN.md`.
@@ -129,5 +147,6 @@ Estado actual:
 - `PatchDraft` estructurado, revisable por defecto y bloqueado solo ante bloqueo duro.
 - Revision deterministica de drafts.
 - Gates declarados por `package.json`.
+- Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.
 - Runner dry-run con maquina de estados cerrada.

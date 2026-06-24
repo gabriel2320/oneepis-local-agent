@@ -8,6 +8,8 @@ import {
   CircleDashed,
   FileText,
   GitBranch,
+  HelpCircle,
+  Info,
   ListChecks,
   Play,
   ShieldCheck,
@@ -36,6 +38,8 @@ import type {
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
+import { buildAgentNarrative, explainStatus } from "./lib/narrative";
+import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
@@ -86,6 +90,10 @@ function App() {
     ...(ollama && !ollama.available ? [ollama.message] : []),
     ...(ollama?.missingPolicyModels.length ? [`Faltan modelos: ${ollama.missingPolicyModels.join(", ")}`] : []),
   ];
+  const narrative = useMemo(
+    () => buildAgentNarrative({ inspection, ollama, plan, draft, review, gateResult, run, blockers, busy }),
+    [inspection, ollama, plan, draft, review, gateResult, run, blockers, busy],
+  );
 
   async function loadAll() {
     setBusy("inspect");
@@ -278,12 +286,15 @@ function App() {
         </header>
 
         {error && (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{error}</div>
+          <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger break-words">{error}</div>
         )}
+
+        <AgentNarrativePanel narrative={narrative} />
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
           <Card
             title="Objetivo"
+            description="El agente trabaja en ciclos cerrados: inspecciona, planifica, propone diff, revisa safety, ejecuta gate y se detiene."
             actions={
               <Button variant="secondary" onClick={loadAll} disabled={busy !== null}>
                 {busy === "inspect" ? "Inspeccionando..." : "Inspeccionar"}
@@ -296,7 +307,7 @@ function App() {
                 <input
                   value={repoPath}
                   onChange={(event) => setRepoPath(event.target.value)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                  className="h-10 min-w-0 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary"
                 />
               </label>
               <label className="grid gap-1 text-sm">
@@ -305,7 +316,7 @@ function App() {
                   value={objective}
                   onChange={(event) => setObjective(event.target.value)}
                   rows={3}
-                  className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  className="min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                 />
               </label>
               <div className="flex flex-wrap gap-2">
@@ -333,7 +344,7 @@ function App() {
             </div>
           </Card>
 
-          <Card title="Bloqueos">
+          <Card title="Bloqueos" description="Si aparece algo aqui, el agente no avanza a escritura real hasta resolverlo.">
             {blockers.length > 0 ? <List items={blockers} tone="warning" /> : <Empty text="Sin bloqueos activos." />}
           </Card>
         </section>
@@ -346,6 +357,53 @@ function App() {
         {activeTab === "bitacora" && <HistoryTab run={run} runs={runs} />}
       </div>
     </main>
+  );
+}
+
+function AgentNarrativePanel({ narrative }: { narrative: AgentNarrative }) {
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <Card
+        title="Lenguaje natural"
+        description="Traduccion operativa del estado actual del agente."
+        className={tonePanel(narrative.tone)}
+      >
+        <div className="grid gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
+              <Info className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold leading-6 break-words">{narrative.headline}</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground break-words">{narrative.body}</p>
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <HelpText label="Siguiente accion" value={narrative.nextAction} />
+            <HelpText label="Limite de gobernanza" value={narrative.guardrail} />
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Autonomia gobernada" description="Poder local, con barandas de OneEpis.">
+        <div className="grid gap-3">
+          <HelpText label="Puede hacer ahora" value={narrative.power} />
+          <List items={narrative.checklist.slice(0, 5)} empty="Sin pasos todavia." />
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+function HelpText({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded border border-border bg-background px-3 py-2">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <HelpCircle className="h-3.5 w-3.5 shrink-0" />
+        {label}
+      </div>
+      <p className="mt-1 text-sm leading-5 break-words">{value}</p>
+    </div>
   );
 }
 
@@ -363,10 +421,10 @@ function MicroProcessTab({
       <Card title="Microproceso">
         <div className="grid gap-2">
           {steps.map((step) => (
-            <div key={step.id} className="grid grid-cols-[130px_110px_minmax(0,1fr)] items-center gap-3 rounded border border-border px-3 py-2 text-sm">
-              <span className="font-medium">{step.label}</span>
-              <Badge tone={stepTone(step.status)}>{step.status}</Badge>
-              <span className="truncate text-muted-foreground">{step.detail}</span>
+            <div key={step.id} className="grid grid-cols-[minmax(0,120px)_minmax(88px,104px)_minmax(0,1fr)] items-start gap-3 rounded border border-border px-3 py-2 text-sm">
+              <span className="font-medium break-words">{step.label}</span>
+              <Badge tone={stepTone(step.status)}>{explainStatus(step.status)}</Badge>
+              <span className="min-w-0 text-muted-foreground break-words">{step.detail}</span>
             </div>
           ))}
         </div>
@@ -375,14 +433,14 @@ function MicroProcessTab({
         {run ? (
           <div className="grid gap-3">
             <div className="flex flex-wrap gap-2">
-              <Badge tone={run.status === "completed" ? "success" : "warning"}>{run.status}</Badge>
+              <Badge tone={run.status === "completed" ? "success" : "warning"}>{explainStatus(run.status)}</Badge>
               <Badge>{run.modelUsed}</Badge>
               <Badge>{run.plan.recommendedGate}</Badge>
             </div>
-            <p className="text-sm text-muted-foreground">{run.objective}</p>
+            <p className="text-sm text-muted-foreground break-words">{run.objective}</p>
             {gateResult && (
-              <p className="rounded border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {gateResult.command}: {gateResult.status}
+              <p className="rounded border border-border bg-background px-3 py-2 text-xs text-muted-foreground break-words">
+                {gateResult.command}: {explainStatus(gateResult.status)}
               </p>
             )}
           </div>
@@ -398,26 +456,26 @@ function RepoTab({ inspection, ollama }: { inspection: RepoInspection | null; ol
   const isMissingModel = (value?: string) => (value ? ollama?.missingPolicyModels.includes(value) : false);
   return (
     <section className="grid gap-4 lg:grid-cols-3">
-      <Card title="Gobernanza">
+      <Card title="Gobernanza" description="Reglas detectadas antes de planificar.">
         <PanelIcon icon={<ShieldCheck className="h-4 w-4" />} label={inspection?.projectName ?? "Sin repo"} />
         <List items={inspection?.detectedRules ?? []} empty="Sin reglas detectadas." />
       </Card>
 
-      <Card title="Git">
+      <Card title="Git" description="Estado de rama y limpieza del worktree objetivo.">
         <PanelIcon icon={<GitBranch className="h-4 w-4" />} label={inspection?.currentBranch || "Sin rama"} />
-        <pre className="mt-3 max-h-44 overflow-auto rounded border border-border bg-background p-3 text-xs text-muted-foreground">
+        <pre className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
           {inspection?.statusText || "Sin estado Git."}
         </pre>
       </Card>
 
-      <Card title="Ollama">
-        <div className="grid grid-cols-2 gap-2 text-sm">
+      <Card title="Ollama" description="Modelos locales usados para planificar y revisar.">
+        <div className="grid gap-2 text-sm sm:grid-cols-2">
           <ModelSlot label="Gobernanza" value={ollama?.policy.governance} missing={isMissingModel(ollama?.policy.governance)} />
           <ModelSlot label="Codigo" value={ollama?.policy.primaryCode} missing={isMissingModel(ollama?.policy.primaryCode)} />
           <ModelSlot label="Rapido" value={ollama?.policy.fastCode} missing={isMissingModel(ollama?.policy.fastCode)} />
           <ModelSlot label="Fallback" value={ollama?.policy.fallback} missing={isMissingModel(ollama?.policy.fallback)} />
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">{ollama?.models.length ?? 0} modelos en {ollama?.baseUrl ?? "Ollama"}</p>
+        <p className="mt-3 text-xs text-muted-foreground break-words">{ollama?.models.length ?? 0} modelos en {ollama?.baseUrl ?? "Ollama"}</p>
       </Card>
     </section>
   );
@@ -427,16 +485,16 @@ function PlanTab({ plan }: { plan: MicroPlan | null }) {
   if (!plan) return <Empty text="Sin microplan." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <Card title="Microplan">
+      <Card title="Microplan" description="Decision pequena, verificable y ajustada a gobernanza.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={plan.blocked ? "warning" : "success"}>{plan.blocked ? "Bloqueado" : "Revisable"}</Badge>
           <Badge tone={riskTone(plan.riskLevel)}>Riesgo {plan.riskLevel}</Badge>
           <Badge>{plan.modelUsed || "local_rules"}</Badge>
         </div>
-        <p className="mt-3 text-sm leading-6">{plan.objective}</p>
+        <p className="mt-3 text-sm leading-6 break-words">{plan.objective}</p>
         <List items={plan.steps} />
       </Card>
-      <Card title="Superficies">
+      <Card title="Superficies" description="Donde tocaria el cambio y como se validaria.">
         <List items={plan.touchedSurfaces} empty="Sin superficies." />
         <div className="mt-4">
           <PanelIcon icon={<ListChecks className="h-4 w-4" />} label={plan.recommendedGate || "sin_gate"} />
@@ -452,25 +510,25 @@ function PatchTab({ draft, review }: { draft: PatchDraft | null; review: PatchRe
   if (!draft) return <Empty text="Sin PatchDraft." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-      <Card title="PatchDraft">
+      <Card title="PatchDraft" description="Diff revisable; no escribe en el repo objetivo por si solo.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={draft.blocked ? "warning" : "success"}>{draft.blocked ? "Bloqueado" : "Revisable"}</Badge>
           <Badge>{draft.id}</Badge>
           <Badge>{draft.modelUsed || "local_rules"}</Badge>
         </div>
-        <p className="mt-3 text-sm leading-6">{draft.summary}</p>
-        <pre className="mt-3 max-h-[420px] overflow-auto rounded border border-border bg-background p-3 text-xs text-muted-foreground">
+        <p className="mt-3 text-sm leading-6 break-words">{draft.summary}</p>
+        <pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
           {draft.unifiedDiff}
         </pre>
       </Card>
-      <Card title="Revision">
+      <Card title="Revision" description="Checks deterministas antes de cualquier apply controlado.">
         {review ? (
           <>
             <div className="flex flex-wrap gap-2">
               <Badge tone={review.approved ? "success" : "warning"}>{review.approved ? "Aprobado" : "Bloqueado"}</Badge>
               <Badge>{review.confirmToken}</Badge>
             </div>
-            <List items={review.checks.map((item) => `${item.name}: ${item.status}`)} />
+            <List items={review.checks.map((item) => `${item.name}: ${explainStatus(item.status)}`)} />
             <List items={review.blocks} tone="warning" />
           </>
         ) : (
@@ -493,22 +551,22 @@ function GateTab({
 }) {
   return (
     <section className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-      <Card title="Gates">
+      <Card title="Gates" description="Solo scripts declarados por el repo objetivo.">
         <List items={inspection?.declaredGates ?? []} empty="Sin gates declarados." />
-        {plan?.recommendedGate && <p className="mt-3 text-sm text-muted-foreground">Recomendado: {plan.recommendedGate}</p>}
+        {plan?.recommendedGate && <p className="mt-3 text-sm text-muted-foreground break-words">Recomendado: {plan.recommendedGate}</p>}
       </Card>
-      <Card title="Resultado">
+      <Card title="Resultado" description="Salida sanitizada del gate ejecutado.">
         {gateResult ? (
           <>
             <div className="flex flex-wrap gap-2">
               <Badge tone={gateResult.status === "passed" ? "success" : gateResult.status === "failed" ? "danger" : "warning"}>
-                {gateResult.status}
+                {explainStatus(gateResult.status)}
               </Badge>
               <Badge>{gateResult.command}</Badge>
               <Badge>{gateResult.durationMs} ms</Badge>
             </div>
-            <p className="mt-3 text-sm">{gateResult.summary}</p>
-            <pre className="mt-3 max-h-72 overflow-auto rounded border border-border bg-background p-3 text-xs text-muted-foreground">
+            <p className="mt-3 text-sm break-words">{gateResult.summary}</p>
+            <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
               {gateResult.stdout || gateResult.stderr || "Sin salida."}
             </pre>
           </>
@@ -523,30 +581,30 @@ function GateTab({
 function HistoryTab({ run, runs }: { run: AgentRun | null; runs: AgentRunSummary[] }) {
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Ultimo ciclo">
+      <Card title="Ultimo ciclo" description="Estados del microproceso cerrado.">
         {run ? (
           <>
             <div className="flex flex-wrap gap-2">
-              <Badge tone={run.status === "completed" ? "success" : "warning"}>{run.status}</Badge>
+              <Badge tone={run.status === "completed" ? "success" : "warning"}>{explainStatus(run.status)}</Badge>
               <Badge>{run.mode}</Badge>
               <Badge>{run.persistence}</Badge>
             </div>
-            <List items={run.steps.map((step) => `${step.state}: ${step.summary}`)} />
+            <List items={run.steps.map((step) => `${step.state}: ${explainStatus(step.status)} - ${step.summary}`)} />
           </>
         ) : (
           <Empty text="Sin ciclo reciente." />
         )}
       </Card>
-      <Card title="Runs">
+      <Card title="Runs" description="Historial local cuando la persistencia esta configurada.">
         {runs.length > 0 ? (
           <div className="grid gap-2">
             {runs.map((item) => (
-              <div key={item.id} className="rounded border border-border px-3 py-2 text-xs">
+              <div key={item.id} className="min-w-0 rounded border border-border px-3 py-2 text-xs">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{item.status}</span>
-                  <span className="text-muted-foreground">{item.startedAt}</span>
+                  <span className="font-medium break-words">{explainStatus(item.status)}</span>
+                  <span className="shrink-0 text-muted-foreground">{item.startedAt}</span>
                 </div>
-                <p className="mt-1 text-muted-foreground">{item.summary}</p>
+                <p className="mt-1 text-muted-foreground break-words">{item.summary}</p>
               </div>
             ))}
           </div>
@@ -560,11 +618,11 @@ function HistoryTab({ run, runs }: { run: AgentRun | null; runs: AgentRunSummary
 
 function ModelSlot({ label, value, missing }: { label: string; value?: string; missing?: boolean }) {
   return (
-    <div className="rounded border border-border p-2">
+    <div className="min-w-0 rounded border border-border p-2">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 flex items-center gap-2 text-xs font-medium">
-        {missing ? <Activity className="h-3.5 w-3.5 text-warning" /> : <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
-        {value ?? "sin modelo"}
+      <div className="mt-1 flex min-w-0 items-start gap-2 text-xs font-medium">
+        {missing ? <Activity className="h-3.5 w-3.5 shrink-0 text-warning" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />}
+        <span className="min-w-0 break-words">{value ?? "sin modelo"}</span>
       </div>
     </div>
   );
@@ -572,19 +630,19 @@ function ModelSlot({ label, value, missing }: { label: string; value?: string; m
 
 function PanelIcon({ icon, label }: { icon: ReactNode; label: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm font-medium">
-      <span className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">{icon}</span>
-      {label}
+    <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">{icon}</span>
+      <span className="min-w-0 break-words">{label}</span>
     </div>
   );
 }
 
 function List({ items, empty, tone = "neutral" }: { items: string[]; empty?: string; tone?: "neutral" | "warning" }) {
-  if (items.length === 0) return empty ? <p className="mt-3 text-sm text-muted-foreground">{empty}</p> : null;
+  if (items.length === 0) return empty ? <p className="mt-3 text-sm text-muted-foreground break-words">{empty}</p> : null;
   return (
     <ul className="mt-3 grid gap-2 text-sm">
-      {items.map((item) => (
-        <li key={item} className={tone === "warning" ? "text-warning" : "text-muted-foreground"}>
+      {items.map((item, index) => (
+        <li key={`${item}-${index}`} className={cn("min-w-0 leading-5 break-words", tone === "warning" ? "text-warning" : "text-muted-foreground")}>
           {item}
         </li>
       ))}
@@ -593,7 +651,7 @@ function List({ items, empty, tone = "neutral" }: { items: string[]; empty?: str
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">{text}</p>;
+  return <p className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground break-words">{text}</p>;
 }
 
 function tabLabel(tab: Tab) {
@@ -612,6 +670,16 @@ function riskTone(risk: string) {
   if (risk === "red") return "danger";
   if (risk === "yellow") return "warning";
   return "success";
+}
+
+function tonePanel(tone: NarrativeTone) {
+  const tones: Record<NarrativeTone, string> = {
+    neutral: "",
+    success: "border-success/40",
+    warning: "border-warning/50",
+    danger: "border-danger/50",
+  };
+  return tones[tone];
 }
 
 function stepTone(status: MicroStepStatus) {

@@ -21,6 +21,8 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Review drafts with deterministic checks: risk, diff size, paths, gates, and blocked state.
 - List persisted runs from the optional `oneepis_agent` database.
 - Run declared package gates through typed commands only.
+- Explain every state in natural Spanish: current action, reason, next action, and active governance guardrail.
+- Keep help text operational and tied to cycle state, not marketing copy.
 
 ### v0.3 Controlled Execution
 
@@ -34,6 +36,14 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Deepen detection of `AGENTS.md`, `docs/GOVERNANCE.md`, `docs/SCREEN_TREE.md`, OpenAPI, and official gates.
 - Prefer patient, chart, paper, API, PostgreSQL, audit, permissions, and OpenAPI work.
 - Keep dashboards, broad RAG, clinical signature, prescriptions, and AI-protagonist flows blocked unless a specific plan exists.
+- Show governed autonomy explicitly: inspect, plan, draft, review, run gates, and prepare controlled apply only when OneEpis rules allow it.
+- Treat OneEpis warnings as visible guidance and hard blocks as stop conditions with concrete repair actions.
+
+### v0.4.1 Usability And Clarity
+
+- Prevent long governance text, Windows paths, model names, tokens, diffs, and gate output from overflowing cards.
+- Translate technical states such as `completed`, `blocked`, `passed`, and `failed` into Spanish labels.
+- Keep the first screen operational with repo, objective, cycle controls, blockers, and natural-language agent status.
 
 ### v0.5 Local Distribution
 
@@ -47,6 +57,19 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `PatchDraft`: summary, rationale, proposed files, unified diff, risks, gates, blocked state, plan, and creation metadata.
 - `PatchReview`: deterministic checks, blocks, approval status, and confirmation token.
 - `GateResult`: command, status, exit code, duration, sanitized stdout, and sanitized stderr.
+- `AgentNarrative`: frontend-only explanation of what the agent is doing, why, next action, guardrail, visible power, and checklist.
+
+## Governed Power
+
+The agent may become more useful without becoming unbounded. Extra power must follow this ladder:
+
+1. Inspect local repo, Git, governance, Ollama, gates, and history.
+2. Produce a microplan with risk, surfaces, gates, and warnings.
+3. Produce a `PatchDraft` without writing target files.
+4. Review the draft with deterministic safety checks.
+5. Run only declared gates from `package.json`.
+6. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
+7. Never push automatically.
 
 ## Gates
 
@@ -57,3 +80,9 @@ npm run check
 ```
 
 Target repo gates are only run when they are declared in the target `package.json` as `check`, `check:*`, `test`, or `build`.
+
+## PR And Microprocess Discipline
+
+- Every code change to this agent should land through a branch and pull request.
+- Every PR should document the closed microprocess it exercised: objective, preflight result, PatchDraft/review state, gate result, and stop condition.
+- A blocked target repo is still a valid microprocess result when the block is explained and no target files are changed.
