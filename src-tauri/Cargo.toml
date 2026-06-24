@@ -1,0 +1,25 @@
+[package]
+name = "oneepis-local-agent"
+version = "0.1.0"
+description = "Mini Cursor local gobernado con Ollama."
+authors = ["OneEpis"]
+edition = "2021"
+default-run = "oneepis-local-agent"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
+tokio-postgres = "0.7"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OneEpis Local Agent",
+  "version": "0.1.0",
+  "identifier": "local.oneepis.agent",
+  "build": {
+    "beforeDevCommand": "npm run dev:web",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OneEpis Local Agent",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 960,
+        "minHeight": 700
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}
+

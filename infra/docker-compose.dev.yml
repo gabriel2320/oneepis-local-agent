@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: oneepis-agent-postgres
+    environment:
+      POSTGRES_DB: oneepis_agent
+      POSTGRES_USER: oneepis_agent
+      POSTGRES_PASSWORD: oneepis_agent
+    ports:
+      - "5444:5432"
+    volumes:
+      - oneepis-agent-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oneepis_agent -d oneepis_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  oneepis-agent-postgres-data:
+

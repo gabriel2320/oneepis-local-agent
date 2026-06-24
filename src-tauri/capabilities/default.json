@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Default capability for OneEpis Local Agent.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
+

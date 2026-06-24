@@ -1,0 +1,37 @@
+{
+  "name": "oneepis-local-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mini Cursor local gobernado para microciclos de desarrollo con Ollama.",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "dev:web": "vite --host 127.0.0.1 --port 1420",
+    "build:web": "tsc --noEmit && vite build",
+    "build": "tauri build",
+    "check": "tsc --noEmit && vite build && cargo test --manifest-path src-tauri/Cargo.toml",
+    "agent": "cargo run --manifest-path src-tauri/Cargo.toml --bin agent --"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.5.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
+
