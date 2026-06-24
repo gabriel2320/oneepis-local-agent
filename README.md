@@ -42,6 +42,7 @@ CLI del agente:
 ```bash
 npm run agent -- inspect "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- readiness "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
+npm run agent -- work-package "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Reducir un archivo clinico near-limit"
 npm run agent -- ollama
 npm run agent -- plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Auditar siguiente microciclo"
 npm run agent -- draft "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Preparar PatchDraft"
@@ -148,6 +149,7 @@ Estado actual:
 - `PatchDraft` estructurado, revisable por defecto y bloqueado solo ante bloqueo duro.
 - Revision deterministica de drafts.
 - Diagnostico `DevelopmentReadiness` con bloqueos, warnings, acciones siguientes y microciclos sugeridos.
+- `DevelopmentWorkPackage` con archivos a inspeccionar, pasos, plan de pruebas, criterios de aceptacion y condiciones de parada.
 - Gates declarados por `package.json`.
 - Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.

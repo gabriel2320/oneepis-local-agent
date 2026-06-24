@@ -32,6 +32,7 @@ El agente local puede actuar con mas poder solo dentro de estos limites:
 
 - inspeccionar repo, Git, gobernanza, Ollama, gates y bitacora;
 - diagnosticar preparacion local con bloqueos, warnings, gates requeridos, salud de modelos y microciclos sugeridos;
+- crear paquete de trabajo con archivos a inspeccionar, pasos, plan de pruebas, criterios de aceptacion y condiciones de parada;
 - producir microplan con riesgo, superficies, gates y warnings;
 - producir `PatchDraft` revisable sin escritura real;
 - revisar drafts con checks deterministas;

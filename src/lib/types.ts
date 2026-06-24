@@ -74,6 +74,31 @@ export type DevelopmentReadiness = {
   localModelSummary: string;
 };
 
+export type WorkPackageTest = {
+  gate: string;
+  command: string;
+  purpose: string;
+  required: boolean;
+};
+
+export type DevelopmentWorkPackage = {
+  repoPath: string;
+  title: string;
+  objective: string;
+  status: "ready_to_draft" | "blocked" | "needs_gate" | string;
+  summary: string;
+  branchStrategy: string;
+  filesToInspect: string[];
+  implementationSteps: string[];
+  testPlan: WorkPackageTest[];
+  acceptanceCriteria: string[];
+  stopConditions: string[];
+  gates: string[];
+  warnings: string[];
+  canDraft: boolean;
+  canApply: boolean;
+};
+
 export type MicroPlan = {
   objective: string;
   recommendedGate: string;

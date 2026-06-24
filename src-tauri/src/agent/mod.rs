@@ -8,3 +8,4 @@ pub mod repo;
 pub mod runner;
 pub mod safety;
 pub mod types;
+pub mod work_package;

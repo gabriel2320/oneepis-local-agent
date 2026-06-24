@@ -9,6 +9,7 @@ use agent::readiness;
 use agent::repo;
 use agent::runner;
 use agent::types::{ApplyPatchRequest, PatchDraft, RunRequest};
+use agent::work_package;
 use std::fs;
 
 #[tokio::main]
@@ -36,6 +37,12 @@ async fn run() -> Result<(), String> {
         "readiness" => {
             let repo_path = required_repo(&args)?;
             print_json(&readiness::development_readiness(repo_path, None).await?)?;
+        }
+        "work-package" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Preparar paquete de trabajo gobernado para OneEpis.");
+            print_json(&work_package::development_work_package(repo_path, objective, None).await?)?;
         }
         "plan" => {
             let repo_path = required_repo(&args)?;
@@ -142,7 +149,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
             .to_string(),
     )
 }

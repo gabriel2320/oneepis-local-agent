@@ -5,6 +5,7 @@ import type {
   ApplyPatchRequest,
   ApplyPatchResult,
   DevelopmentReadiness,
+  DevelopmentWorkPackage,
   GateResult,
   MicroPlan,
   OllamaStatus,
@@ -23,6 +24,10 @@ export function getOllamaStatus(baseUrl?: string) {
 
 export function getDevelopmentReadiness(repoPath: string, baseUrl?: string) {
   return invoke<DevelopmentReadiness>("development_readiness", { repoPath, baseUrl });
+}
+
+export function getDevelopmentWorkPackage(repoPath: string, objective: string, baseUrl?: string) {
+  return invoke<DevelopmentWorkPackage>("development_work_package", { repoPath, objective, baseUrl });
 }
 
 export function planMicrocycle(repoPath: string, objective: string, baseUrl?: string) {

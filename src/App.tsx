@@ -6,6 +6,7 @@ import {
   BrainCircuit,
   CheckCircle2,
   CircleDashed,
+  ClipboardList,
   FileText,
   GitBranch,
   HelpCircle,
@@ -18,6 +19,7 @@ import {
 import {
   draftPatch,
   getDevelopmentReadiness,
+  getDevelopmentWorkPackage,
   getOllamaStatus,
   inspectRepository,
   listRuns,
@@ -30,6 +32,7 @@ import type {
   AgentRun,
   AgentRunSummary,
   DevelopmentReadiness,
+  DevelopmentWorkPackage,
   GateResult,
   MicroPlan,
   OllamaStatus,
@@ -45,7 +48,7 @@ import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "preparacion", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "paquete", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -70,6 +73,7 @@ function App() {
   const [inspection, setInspection] = useState<RepoInspection | null>(null);
   const [ollama, setOllama] = useState<OllamaStatus | null>(null);
   const [readiness, setReadiness] = useState<DevelopmentReadiness | null>(null);
+  const [workPackage, setWorkPackage] = useState<DevelopmentWorkPackage | null>(null);
   const [plan, setPlan] = useState<MicroPlan | null>(null);
   const [draft, setDraft] = useState<PatchDraft | null>(null);
   const [review, setReview] = useState<PatchReview | null>(null);
@@ -143,6 +147,20 @@ function App() {
       setReview(nextReview);
       setPlan(nextDraft.plan);
       setActiveTab("patch");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function createWorkPackage() {
+    setBusy("workPackage");
+    setError(null);
+    try {
+      const nextPackage = await getDevelopmentWorkPackage(repoPath, objective);
+      setWorkPackage(nextPackage);
+      setActiveTab("paquete");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -336,6 +354,10 @@ function App() {
                   <FileText className="mr-2 h-4 w-4" />
                   {busy === "draft" ? "Generando..." : "PatchDraft"}
                 </Button>
+                <Button variant="secondary" onClick={createWorkPackage} disabled={busy !== null}>
+                  <ClipboardList className="mr-2 h-4 w-4" />
+                  {busy === "workPackage" ? "Paquete..." : "Paquete"}
+                </Button>
                 <Button variant="secondary" onClick={runDryCycle} disabled={busy !== null}>
                   <Play className="mr-2 h-4 w-4" />
                   {busy === "run" ? "Ejecutando..." : "Dry-run"}
@@ -359,6 +381,7 @@ function App() {
 
         {activeTab === "repo" && <RepoTab inspection={inspection} ollama={ollama} />}
         {activeTab === "preparacion" && <ReadinessTab readiness={readiness} />}
+        {activeTab === "paquete" && <WorkPackageTab workPackage={workPackage} />}
         {activeTab === "microproceso" && <MicroProcessTab steps={microSteps} run={run} gateResult={gateResult} />}
         {activeTab === "plan" && <PlanTab plan={plan} />}
         {activeTab === "patch" && <PatchTab draft={draft} review={review} />}
@@ -544,6 +567,56 @@ function ReadinessTab({ readiness }: { readiness: DevelopmentReadiness | null })
   );
 }
 
+function WorkPackageTab({ workPackage }: { workPackage: DevelopmentWorkPackage | null }) {
+  if (!workPackage) return <Empty text="Sin paquete de trabajo. Elige un objetivo y presiona Paquete." />;
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Paquete De Trabajo" description="Plan de programacion local con pruebas y barandas.">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={workPackageStatusTone(workPackage.status)}>{workPackageStatusLabel(workPackage.status)}</Badge>
+          <Badge>{workPackage.branchStrategy}</Badge>
+          <Badge>{workPackage.gates.length} gates</Badge>
+        </div>
+        <h3 className="mt-3 text-base font-semibold break-words">{workPackage.title}</h3>
+        <p className="mt-1 text-sm text-muted-foreground break-words">{workPackage.summary}</p>
+        <HelpText label="Objetivo" value={workPackage.objective} />
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <div>
+            <h4 className="text-sm font-semibold">Archivos a inspeccionar</h4>
+            <List items={workPackage.filesToInspect} />
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold">Pasos de implementacion</h4>
+            <List items={workPackage.implementationSteps} />
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Plan De Pruebas" description="Gates obligatorios para cerrar el microciclo.">
+          <div className="grid gap-3">
+            {workPackage.testPlan.map((test) => (
+              <div key={test.gate} className="min-w-0 rounded border border-border bg-background px-3 py-2 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <Badge>{test.gate}</Badge>
+                  <Badge tone={test.required ? "warning" : "neutral"}>{test.required ? "obligatorio" : "opcional"}</Badge>
+                </div>
+                <p className="mt-1 font-medium break-words">{test.command}</p>
+                <p className="mt-1 text-muted-foreground break-words">{test.purpose}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card title="Aceptacion Y Parada" description="Criterios para decidir si el ciclo termina.">
+          <List items={workPackage.acceptanceCriteria} />
+          <List items={workPackage.stopConditions} tone="warning" />
+          <List items={workPackage.warnings} tone="warning" />
+        </Card>
+      </div>
+    </section>
+  );
+}
+
 function PlanTab({ plan }: { plan: MicroPlan | null }) {
   if (!plan) return <Empty text="Sin microplan." />;
   return (
@@ -721,6 +794,7 @@ function tabLabel(tab: Tab) {
   const labels: Record<Tab, string> = {
     repo: "Repo",
     preparacion: "Preparacion",
+    paquete: "Paquete",
     microproceso: "Microproceso",
     plan: "Plan",
     patch: "Patch",
@@ -750,6 +824,21 @@ function readinessLabel(status?: string) {
     blocked: "bloqueado",
   };
   return status ? labels[status] ?? status : "pendiente";
+}
+
+function workPackageStatusTone(status: string) {
+  if (status === "ready_to_draft") return "success";
+  if (status === "blocked") return "danger";
+  return "warning";
+}
+
+function workPackageStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    ready_to_draft: "listo para PatchDraft",
+    blocked: "bloqueado",
+    needs_gate: "requiere gate",
+  };
+  return labels[status] ?? status;
 }
 
 function tonePanel(tone: NarrativeTone) {

@@ -109,6 +109,35 @@ pub struct DevelopmentReadiness {
     pub local_model_summary: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkPackageTest {
+    pub gate: String,
+    pub command: String,
+    pub purpose: String,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevelopmentWorkPackage {
+    pub repo_path: String,
+    pub title: String,
+    pub objective: String,
+    pub status: String,
+    pub summary: String,
+    pub branch_strategy: String,
+    pub files_to_inspect: Vec<String>,
+    pub implementation_steps: Vec<String>,
+    pub test_plan: Vec<WorkPackageTest>,
+    pub acceptance_criteria: Vec<String>,
+    pub stop_conditions: Vec<String>,
+    pub gates: Vec<String>,
+    pub warnings: Vec<String>,
+    pub can_draft: bool,
+    pub can_apply: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MicroPlan {

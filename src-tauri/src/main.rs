@@ -9,8 +9,10 @@ use agent::repo;
 use agent::runner;
 use agent::types::{
     AgentRun, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, DevelopmentReadiness,
-    GateResult, MicroPlan, OllamaStatus, PatchDraft, PatchReview, RepoInspection, RunRequest,
+    DevelopmentWorkPackage, GateResult, MicroPlan, OllamaStatus, PatchDraft, PatchReview,
+    RepoInspection, RunRequest,
 };
+use agent::work_package;
 
 #[tauri::command(rename_all = "camelCase")]
 fn inspect_repository(repo_path: String) -> Result<RepoInspection, String> {
@@ -28,6 +30,15 @@ async fn development_readiness(
     base_url: Option<String>,
 ) -> Result<DevelopmentReadiness, String> {
     readiness::development_readiness(&repo_path, base_url).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn development_work_package(
+    repo_path: String,
+    objective: String,
+    base_url: Option<String>,
+) -> Result<DevelopmentWorkPackage, String> {
+    work_package::development_work_package(&repo_path, &objective, base_url).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -88,6 +99,7 @@ fn main() {
             inspect_repository,
             get_ollama_status,
             development_readiness,
+            development_work_package,
             plan_microcycle,
             run_microcycle,
             draft_patch,
