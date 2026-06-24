@@ -1,4 +1,5 @@
 pub mod gates;
+pub mod governance;
 pub mod ollama;
 pub mod patch;
 pub mod persistence;

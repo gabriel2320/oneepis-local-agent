@@ -93,6 +93,15 @@ preflight -> governance_read -> repo_audit -> micro_plan -> patch_draft
 -> lesson_record -> stop_or_next
 ```
 
+## Adaptador OneEpis
+
+Cuando el repo objetivo es OneEpis, el agente aplica reglas deterministicas sobre el microplan antes de continuar:
+
+- clasifica el objetivo contra el semaforo de gobernanza;
+- bloquea alcances rojos como dashboard central, chat libre, RAG amplio, IA externa, receta valida, firma clinica u ordenes ejecutables;
+- agrega gates oficiales segun superficie: `check:api`, `check:web`, `check:contract`, `check:e2e` o `check:size`;
+- convierte advertencias blandas de gobernanza en warnings, no en rechazo automatico.
+
 ## Roadmap
 
 La hoja de ruta esta en `docs/DEVELOPMENT_PLAN.md`.

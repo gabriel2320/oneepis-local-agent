@@ -1,3 +1,4 @@
+use crate::agent::governance::apply_oneepis_governance;
 use crate::agent::ollama::ask_for_micro_plan;
 use crate::agent::persistence::record_run;
 use crate::agent::repo::inspect_repository;
@@ -146,10 +147,17 @@ fn fallback_plan(inspection: &crate::agent::types::RepoInspection, objective: &s
 }
 
 fn normalize_plan(plan: &mut MicroPlan, inspection: &crate::agent::types::RepoInspection) {
+    if inspection.is_one_epis {
+        apply_oneepis_governance(plan, inspection);
+    }
     if plan.recommended_gate.is_empty()
         || !inspection.declared_gates.contains(&plan.recommended_gate)
     {
-        plan.recommended_gate = select_gate(&inspection.declared_gates);
+        plan.recommended_gate = plan
+            .required_gates
+            .first()
+            .cloned()
+            .unwrap_or_else(|| select_gate(&inspection.declared_gates));
     }
     if plan.risk_level.is_empty() {
         plan.risk_level = if plan.blocked { "yellow" } else { "green" }.to_string();

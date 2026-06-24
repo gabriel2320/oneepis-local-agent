@@ -55,7 +55,12 @@ pub fn inspect_repository(repo_path: &str) -> Result<RepoInspection, String> {
         detected_rules.extend([
             "OneEpis adapter activo: leer AGENTS.md y docs/GOVERNANCE.md.".to_string(),
             "Preferir paciente/ficha/papel/API/PostgreSQL/auditoria/permisos/OpenAPI.".to_string(),
-            "No agregar dashboard, RAG, labs pegados al core, receta, firma ni IA protagonista sin plan explicito.".to_string(),
+            "Aplicar semaforo de cambio: verde micro-PR; amarillo requiere tests proporcionales; rojo requiere contrato primero.".to_string(),
+            "Usar el gate oficial mas pequeno por superficie: check:api, check:web, check:contract, check:e2e o check.".to_string(),
+            "Pantallas clinicas visibles requieren SCREEN_TREE y Screen Capability Registry.".to_string(),
+            "No agregar dashboard central, chat libre, RAG amplio, IA externa, receta valida, firma, orden ejecutable ni agenda productiva sin contrato explicito.".to_string(),
+            "Programa activo permitido: PROG-PATIENT-CORE-01 y nucleo paciente tradicional.".to_string(),
+            "Cada pasada debe dejar aprendizaje ejecutable: test, gate, contrato o tipo antes que documento nuevo.".to_string(),
         ]);
     }
 
