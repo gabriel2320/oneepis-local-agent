@@ -30,9 +30,11 @@ import {
   reviewPatch,
   runGate,
   runMicrocycle,
+  runMicrocycleReport,
 } from "./lib/api";
 import type {
   AgentRun,
+  AgentRunReport,
   AgentRunSummary,
   DevelopmentBrief,
   DevelopmentContextPack,
@@ -53,7 +55,7 @@ import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "preparacion", "paquete", "contexto", "brief", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "paquete", "contexto", "brief", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -89,6 +91,7 @@ function App() {
   const [review, setReview] = useState<PatchReview | null>(null);
   const [gateResult, setGateResult] = useState<GateResult | null>(null);
   const [run, setRun] = useState<AgentRun | null>(null);
+  const [report, setReport] = useState<AgentRunReport | null>(null);
   const [runs, setRuns] = useState<AgentRunSummary[]>([]);
   const [microSteps, setMicroSteps] = useState<MicroStep[]>(initialMicroSteps);
   const [busy, setBusy] = useState<string | null>(null);
@@ -215,6 +218,20 @@ function App() {
       setPlan(nextRun.plan);
       setRuns(await listRuns(20));
       setActiveTab("bitacora");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function createReport() {
+    setBusy("report");
+    setError(null);
+    try {
+      const nextReport = await runMicrocycleReport(repoPath, objective);
+      setReport(nextReport);
+      setActiveTab("reporte");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -423,6 +440,10 @@ function App() {
                   <Play className="mr-2 h-4 w-4" />
                   {busy === "run" ? "Ejecutando..." : "Dry-run"}
                 </Button>
+                <Button variant="secondary" onClick={createReport} disabled={busy !== null}>
+                  <ClipboardList className="mr-2 h-4 w-4" />
+                  {busy === "report" ? "Reporte..." : "Reporte PR"}
+                </Button>
                 <Button variant="secondary" onClick={runMicroProcess} disabled={busy !== null}>
                   <CircleDashed className="mr-2 h-4 w-4" />
                   {busy === "microprocess" ? "Micro..." : "Microproceso"}
@@ -446,6 +467,7 @@ function App() {
         {activeTab === "contexto" && <ContextPackTab contextPack={contextPack} />}
         {activeTab === "brief" && <BriefTab brief={brief} />}
         {activeTab === "microproceso" && <MicroProcessTab steps={microSteps} run={run} gateResult={gateResult} />}
+        {activeTab === "reporte" && <ReportTab report={report} />}
         {activeTab === "plan" && <PlanTab plan={plan} />}
         {activeTab === "patch" && <PatchTab draft={draft} review={review} />}
         {activeTab === "gates" && <GateTab inspection={inspection} plan={plan} gateResult={gateResult} />}
@@ -543,6 +565,38 @@ function MicroProcessTab({
           <Empty text="Sin microproceso reciente." />
         )}
       </Card>
+    </section>
+  );
+}
+
+function ReportTab({ report }: { report: AgentRunReport | null }) {
+  if (!report) {
+    return <Empty text="Sin reporte. Presiona Reporte PR para ejecutar dry-run y preparar Markdown revisable." />;
+  }
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Reporte PR" description="Markdown de microproceso cerrado para revision humana.">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={report.verdict === "ready_for_review" ? "success" : "warning"}>{report.verdict}</Badge>
+          <Badge>{report.status}</Badge>
+          <Badge>{report.recommendedGate}</Badge>
+          <Badge>{report.modelUsed}</Badge>
+        </div>
+        <p className="mt-3 text-sm leading-6 break-words">{report.objective}</p>
+        <pre className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
+          {report.markdown}
+        </pre>
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Checklist" description="Condiciones que el reporte deja visibles.">
+          <List items={report.checklist} empty="Sin checklist." />
+        </Card>
+        <Card title="Siguientes Pasos" description="Accion concreta antes de cambiar codigo.">
+          <List items={report.nextActions} empty="Sin acciones pendientes." />
+          <List items={report.warnings} tone="warning" empty="Sin warnings." />
+        </Card>
+      </div>
     </section>
   );
 }
@@ -969,6 +1023,7 @@ function tabLabel(tab: Tab) {
     contexto: "Contexto",
     brief: "Brief",
     microproceso: "Microproceso",
+    reporte: "Reporte",
     plan: "Plan",
     patch: "Patch",
     gates: "Gates",

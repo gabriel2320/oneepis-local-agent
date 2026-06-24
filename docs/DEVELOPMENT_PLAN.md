@@ -28,6 +28,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Provide `DevelopmentWorkPackage` for a selected objective: files to inspect, implementation steps, test plan, acceptance criteria, stop conditions, gates, and branch strategy.
 - Provide `DevelopmentContextPack` for the selected objective: bounded local snippets, directory summaries, sanitization warnings, prompt notes, and gates for Ollama-only programming.
 - Provide `DevelopmentBrief` between context and patch: governed system/user prompts, JSON response contract, stop conditions, and optional local Ollama proposal.
+- Provide `AgentRunReport` after a dry-run: Markdown for PR review, status verdict, checklist, warnings, next actions, gate recommendation, and lessons.
 
 ### v0.3 Controlled Execution
 
@@ -70,6 +71,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `DevelopmentContextPack`: read-only local context contract with proposed files, sanitized excerpts, directory summaries, skipped/missing paths, prompt notes, gates, and byte budget.
 - `DevelopmentBrief`: read-only local model work order with prompts, response contract, context files, next actions, stop conditions, and optional `LocalModelProposal`.
 - `LocalModelProposal`: Ollama-only structured suggestion with summary, files to change, implementation notes, risks, gates, raw sanitized response, and model used.
+- `AgentRunReport`: Spanish/Markdown review artifact for closed microprocesses, including run id, verdict, objective, branch, model, recommended gate, checklist, warnings, next actions, and lessons.
 - Proposals that mention files outside the governed context or gates outside the package become `needs_review`, not an approved path to PatchDraft.
 
 ## Governed Power
@@ -102,6 +104,7 @@ Target repo gates are only run when they are declared in the target `package.jso
 
 - Every code change to this agent should land through a branch and pull request.
 - Every PR should document the closed microprocess it exercised: objective, preflight result, PatchDraft/review state, gate result, and stop condition.
+- Prefer attaching or pasting the generated `AgentRunReport` when the change updates agent behavior.
 - When a PR changes agent behavior, include the context-pack result or explain why no context pack was needed.
 - If the local model is invoked, include the brief/proposal status and the model used.
 - A blocked target repo is still a valid microprocess result when the block is explained and no target files are changed.

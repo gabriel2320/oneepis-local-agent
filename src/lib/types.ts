@@ -255,3 +255,17 @@ export type AgentRun = {
   lessons: string[];
   persistence: string;
 };
+
+export type AgentRunReport = {
+  runId: string;
+  status: string;
+  verdict: string;
+  objective: string;
+  branch: string;
+  modelUsed: string;
+  recommendedGate: string;
+  markdown: string;
+  checklist: string[];
+  warnings: string[];
+  nextActions: string[];
+};

@@ -50,6 +50,7 @@ npm run agent -- plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEp
 npm run agent -- draft "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Preparar PatchDraft"
 npm run agent -- gate "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --gate check:size
 npm run agent -- run "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --max-cycles 1
+npm run agent -- report "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Preparar reporte PR gobernado"
 npm run agent -- list-runs --limit 20
 ```
 
@@ -132,6 +133,7 @@ La pantalla principal mantiene una voz operativa del agente:
 - evita esconder el detalle tecnico: plan, PatchDraft, revision, gates y bitacora siguen visibles.
 - muestra contexto local sanitizado: archivos incluidos, omisiones, presupuesto de bytes y notas para el modelo Ollama.
 - convierte el contexto en un `DevelopmentBrief`: prompts, contrato JSON, propuesta local opcional y condiciones de parada.
+- genera un `AgentRunReport` en Markdown para PR: estados, checklist, warnings, acciones siguientes, gate recomendado y lecciones del microproceso.
 
 Este sistema no aumenta permisos por fuera de gobernanza. Da mas claridad y coordina mejor los ciclos cerrados:
 
@@ -157,6 +159,7 @@ Estado actual:
 - `DevelopmentWorkPackage` con archivos a inspeccionar, pasos, plan de pruebas, criterios de aceptacion y condiciones de parada.
 - `DevelopmentContextPack` con extractos locales sanitizados, limites de bytes, warnings, gates y notas de prompt para Ollama.
 - `DevelopmentBrief` con orden de trabajo, prompts, contrato de respuesta y propuesta estructurada opcional desde Ollama.
+- `AgentRunReport` con Markdown revisable para PR y microprocesos cerrados.
 - Gates declarados por `package.json`.
 - Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.

@@ -334,6 +334,22 @@ pub struct AgentRun {
     pub persistence: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRunReport {
+    pub run_id: String,
+    pub status: String,
+    pub verdict: String,
+    pub objective: String,
+    pub branch: String,
+    pub model_used: String,
+    pub recommended_gate: String,
+    pub markdown: String,
+    pub checklist: Vec<String>,
+    pub warnings: Vec<String>,
+    pub next_actions: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunRequest {

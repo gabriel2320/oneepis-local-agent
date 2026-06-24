@@ -6,8 +6,8 @@ use crate::agent::persistence::record_run;
 use crate::agent::repo::inspect_repository;
 use crate::agent::safety::{sanitize_log, sha256_hex};
 use crate::agent::types::{
-    AgentRun, AgentStep, DevelopmentBrief, DevelopmentContextPack, DevelopmentWorkPackage,
-    MicroPlan, RunRequest,
+    AgentRun, AgentRunReport, AgentStep, DevelopmentBrief, DevelopmentContextPack,
+    DevelopmentWorkPackage, MicroPlan, RunRequest,
 };
 use crate::agent::work_package::development_work_package;
 use chrono::Utc;
@@ -139,6 +139,65 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
         Err(err) => format!("not_recorded: {}", sanitize_log(&err)),
     };
     Ok(run)
+}
+
+pub async fn run_microcycle_report(request: RunRequest) -> Result<AgentRunReport, String> {
+    let run = run_microcycle(request).await?;
+    Ok(build_run_report(&run))
+}
+
+pub fn build_run_report(run: &AgentRun) -> AgentRunReport {
+    let blocked_steps = run
+        .steps
+        .iter()
+        .filter(|step| step.status == "blocked" || step.status == "failed")
+        .collect::<Vec<_>>();
+    let verdict = if run.status == "completed" && blocked_steps.is_empty() {
+        "ready_for_review"
+    } else {
+        "blocked_or_needs_review"
+    };
+    let checklist = vec![
+        format!("Objetivo acotado: {}", run.objective),
+        format!("Modo sin escritura: {}", run.mode),
+        format!("Gate recomendado: {}", run.plan.recommended_gate),
+        format!("Riesgo: {}", run.plan.risk_level),
+        format!("Persistencia: {}", run.persistence),
+    ];
+    let mut warnings = run.plan.warnings.clone();
+    warnings.extend(
+        blocked_steps
+            .iter()
+            .map(|step| format!("{}: {}", step.state, step.summary)),
+    );
+    let next_actions = if verdict == "ready_for_review" {
+        vec![
+            format!("Ejecutar {} si aplica al PR.", run.plan.recommended_gate),
+            "Convertir una sola decision aprobada en PatchDraft revisable.".to_string(),
+            "Registrar resultado en la descripcion del PR.".to_string(),
+        ]
+    } else {
+        vec![
+            "Resolver bloqueos antes de PatchDraft.".to_string(),
+            "Regenerar paquete, contexto y brief tras resolverlos.".to_string(),
+            "No aplicar cambios reales desde este reporte.".to_string(),
+        ]
+    };
+    let markdown = run_report_markdown(run, verdict, &checklist, &warnings, &next_actions);
+
+    AgentRunReport {
+        run_id: run.id.clone(),
+        status: run.status.clone(),
+        verdict: verdict.to_string(),
+        objective: run.objective.clone(),
+        branch: run.branch.clone(),
+        model_used: run.model_used.clone(),
+        recommended_gate: run.plan.recommended_gate.clone(),
+        markdown,
+        checklist,
+        warnings,
+        next_actions,
+    }
 }
 
 fn fallback_plan(inspection: &crate::agent::types::RepoInspection, objective: &str) -> MicroPlan {
@@ -388,6 +447,52 @@ fn run_id(repo_path: &str, objective: &str, started_at: &str) -> String {
     format!("run-{}", &digest[..16])
 }
 
+fn run_report_markdown(
+    run: &AgentRun,
+    verdict: &str,
+    checklist: &[String],
+    warnings: &[String],
+    next_actions: &[String],
+) -> String {
+    let mut lines = vec![
+        "# OneEpis Local Agent Microprocess Report".to_string(),
+        String::new(),
+        format!("- Run: {}", run.id),
+        format!("- Objective: {}", run.objective),
+        format!("- Status: {}", run.status),
+        format!("- Verdict: {verdict}"),
+        format!("- Mode: {}", run.mode),
+        format!("- Branch: {}", run.branch),
+        format!("- Model: {}", run.model_used),
+        format!("- Recommended gate: {}", run.plan.recommended_gate),
+        String::new(),
+        "## States".to_string(),
+    ];
+    lines.extend(run.steps.iter().map(|step| {
+        format!(
+            "- {}. {}: {} - {}",
+            step.order, step.state, step.status, step.summary
+        )
+    }));
+    lines.push(String::new());
+    lines.push("## Checklist".to_string());
+    lines.extend(checklist.iter().map(|item| format!("- {item}")));
+    lines.push(String::new());
+    lines.push("## Warnings".to_string());
+    if warnings.is_empty() {
+        lines.push("- Sin warnings.".to_string());
+    } else {
+        lines.extend(warnings.iter().map(|item| format!("- {item}")));
+    }
+    lines.push(String::new());
+    lines.push("## Next Actions".to_string());
+    lines.extend(next_actions.iter().map(|item| format!("- {item}")));
+    lines.push(String::new());
+    lines.push("## Lessons".to_string());
+    lines.extend(run.lessons.iter().map(|item| format!("- {item}")));
+    sanitize_log(&lines.join("\n"))
+}
+
 fn join_or_empty(items: &[String]) -> String {
     if items.is_empty() {
         "sin_gate".to_string()
@@ -447,5 +552,46 @@ mod tests {
             preferred_gate_for_objective("Reducir archivo clinico near-limit", &gates),
             Some("check:size".to_string())
         );
+    }
+
+    #[test]
+    fn run_report_contains_pr_ready_sections() {
+        let run = AgentRun {
+            id: "run-test".to_string(),
+            repo_path: "C:\\OneEpis".to_string(),
+            objective: "Reducir archivo".to_string(),
+            branch: "main".to_string(),
+            status: "completed".to_string(),
+            mode: "dry_run".to_string(),
+            model_used: "local_rules".to_string(),
+            started_at: "start".to_string(),
+            completed_at: "end".to_string(),
+            steps: vec![AgentStep {
+                order: 1,
+                state: "work_package".to_string(),
+                status: "completed".to_string(),
+                summary: "Paquete listo.".to_string(),
+            }],
+            plan: MicroPlan {
+                objective: "Reducir archivo".to_string(),
+                recommended_gate: "check:size".to_string(),
+                risk_level: "green".to_string(),
+                touched_surfaces: vec!["repo".to_string()],
+                required_gates: vec!["check:size".to_string()],
+                steps: vec!["Leer contexto.".to_string()],
+                warnings: Vec::new(),
+                blocked: false,
+                model_used: "local_rules".to_string(),
+            },
+            lessons: vec!["Cerrar con gate.".to_string()],
+            persistence: "not_configured".to_string(),
+        };
+
+        let report = build_run_report(&run);
+
+        assert_eq!(report.verdict, "ready_for_review");
+        assert!(report.markdown.contains("## States"));
+        assert!(report.markdown.contains("## Next Actions"));
+        assert!(report.recommended_gate.contains("check:size"));
     }
 }

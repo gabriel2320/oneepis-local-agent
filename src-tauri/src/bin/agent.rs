@@ -118,6 +118,22 @@ async fn run() -> Result<(), String> {
             };
             print_json(&runner::run_microcycle(request).await?)?;
         }
+        "report" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Ejecutar dry-run gobernado y preparar reporte PR.");
+            let request = RunRequest {
+                repo_path: repo_path.to_string(),
+                objective: objective.to_string(),
+                max_cycles: Some(1),
+                mode: Some("dry_run".to_string()),
+                database_url: None,
+                allow_apply: false,
+                confirm_token: None,
+                branch_strategy: "reuse".to_string(),
+            };
+            print_json(&runner::run_microcycle_report(request).await?)?;
+        }
         "stop" => {
             println!(
                 "{}",
@@ -164,7 +180,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent report <repo> [--objective texto] | agent ollama | agent stop"
             .to_string(),
     )
 }

@@ -10,9 +10,9 @@ use agent::readiness;
 use agent::repo;
 use agent::runner;
 use agent::types::{
-    AgentRun, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, DevelopmentBrief,
-    DevelopmentContextPack, DevelopmentReadiness, DevelopmentWorkPackage, GateResult, MicroPlan,
-    OllamaStatus, PatchDraft, PatchReview, RepoInspection, RunRequest,
+    AgentRun, AgentRunReport, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult,
+    DevelopmentBrief, DevelopmentContextPack, DevelopmentReadiness, DevelopmentWorkPackage,
+    GateResult, MicroPlan, OllamaStatus, PatchDraft, PatchReview, RepoInspection, RunRequest,
 };
 use agent::work_package;
 
@@ -76,6 +76,11 @@ async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
     runner::run_microcycle(request).await
 }
 
+#[tauri::command]
+async fn run_microcycle_report(request: RunRequest) -> Result<AgentRunReport, String> {
+    runner::run_microcycle_report(request).await
+}
+
 #[tauri::command(rename_all = "camelCase")]
 async fn draft_patch(
     repo_path: String,
@@ -125,6 +130,7 @@ fn main() {
             development_brief,
             plan_microcycle,
             run_microcycle,
+            run_microcycle_report,
             draft_patch,
             review_patch,
             apply_approved_patch,

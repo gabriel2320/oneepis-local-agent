@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AgentRun,
+  AgentRunReport,
   AgentRunSummary,
   ApplyPatchRequest,
   ApplyPatchResult,
@@ -50,6 +51,21 @@ export function runMicrocycle(repoPath: string, objective: string, maxCycles: nu
       repoPath,
       objective,
       maxCycles,
+      mode: "dry_run",
+      databaseUrl: null,
+      allowApply: false,
+      confirmToken: null,
+      branchStrategy: "reuse",
+    },
+  });
+}
+
+export function runMicrocycleReport(repoPath: string, objective: string) {
+  return invoke<AgentRunReport>("run_microcycle_report", {
+    request: {
+      repoPath,
+      objective,
+      maxCycles: 1,
       mode: "dry_run",
       databaseUrl: null,
       allowApply: false,
