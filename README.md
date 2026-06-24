@@ -22,6 +22,14 @@ npm run dev
 npm run check
 ```
 
+Acceso directo de escritorio:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\launch-dev.ps1" -SmokeTest
+```
+
+El `.lnk` del Escritorio debe apuntar a `scripts\launch-dev.ps1` con `-NoProfile -NoExit -ExecutionPolicy Bypass -File`.
+
 CLI del agente:
 
 ```bash
