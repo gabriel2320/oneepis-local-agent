@@ -5,6 +5,7 @@ import {
   Bot,
   BrainCircuit,
   CheckCircle2,
+  CircleDashed,
   FileText,
   GitBranch,
   ListChecks,
@@ -38,8 +39,23 @@ import { Card } from "./components/ui/card";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
+type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
+type MicroStep = {
+  id: string;
+  label: string;
+  status: MicroStepStatus;
+  detail: string;
+};
+
+const initialMicroSteps: MicroStep[] = [
+  { id: "inspect", label: "Inspeccion", status: "pending", detail: "Sin ejecutar." },
+  { id: "plan", label: "Plan", status: "pending", detail: "Sin ejecutar." },
+  { id: "draft", label: "PatchDraft", status: "pending", detail: "Sin ejecutar." },
+  { id: "run", label: "Dry-run", status: "pending", detail: "Sin ejecutar." },
+  { id: "gate", label: "Gate", status: "pending", detail: "Sin ejecutar." },
+];
 
 function App() {
   const [repoPath, setRepoPath] = useState(defaultRepo);
@@ -53,6 +69,7 @@ function App() {
   const [gateResult, setGateResult] = useState<GateResult | null>(null);
   const [run, setRun] = useState<AgentRun | null>(null);
   const [runs, setRuns] = useState<AgentRunSummary[]>([]);
+  const [microSteps, setMicroSteps] = useState<MicroStep[]>(initialMicroSteps);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,6 +151,72 @@ function App() {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function runMicroProcess() {
+    setBusy("microprocess");
+    setError(null);
+    setActiveTab("microproceso");
+    setMicroSteps(initialMicroSteps);
+    try {
+      markMicroStep("inspect", "running", "Leyendo repo, modelos y bitacora.");
+      const [repo, ai, history] = await Promise.all([
+        inspectRepository(repoPath),
+        getOllamaStatus(),
+        listRuns(20),
+      ]);
+      setInspection(repo);
+      setOllama(ai);
+      setRuns(history);
+      markMicroStep("inspect", repo.blocks.length > 0 ? "blocked" : "completed", repo.blocks[0] ?? `${repo.projectName} en ${repo.currentBranch}.`);
+
+      markMicroStep("plan", "running", "Generando microplan gobernado.");
+      const nextPlan = await planMicrocycle(repoPath, objective);
+      setPlan(nextPlan);
+      markMicroStep("plan", nextPlan.blocked ? "blocked" : "completed", `Modelo ${nextPlan.modelUsed}; gate ${nextPlan.recommendedGate}.`);
+
+      markMicroStep("draft", "running", "Preparando PatchDraft revisable.");
+      const nextDraft = await draftPatch(repoPath, objective);
+      const nextReview = await reviewPatch(nextDraft);
+      setDraft(nextDraft);
+      setReview(nextReview);
+      markMicroStep("draft", nextReview.approved ? "completed" : "blocked", nextReview.blocks[0] ?? nextDraft.summary);
+
+      markMicroStep("run", "running", "Ejecutando dry-run sin escritura.");
+      const nextRun = await runMicrocycle(repoPath, objective, 1);
+      setRun(nextRun);
+      setPlan(nextRun.plan);
+      markMicroStep("run", nextRun.status === "completed" ? "completed" : "blocked", `Run ${nextRun.id}: ${nextRun.status}.`);
+
+      const selectedGate = selectSmallGate(repo.declaredGates, nextRun.plan.recommendedGate);
+      if (selectedGate) {
+        markMicroStep("gate", "running", `Ejecutando ${selectedGate}.`);
+        const nextGate = await runGate(repoPath, selectedGate);
+        setGateResult(nextGate);
+        markMicroStep("gate", gateStatus(nextGate.status), nextGate.summary);
+      } else {
+        markMicroStep("gate", "blocked", "Sin gate declarado.");
+      }
+      setRuns(await listRuns(20));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      markRunningMicroStepFailed(message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function markMicroStep(id: string, status: MicroStepStatus, detail: string) {
+    setMicroSteps((current) =>
+      current.map((step) => (step.id === id ? { ...step, status, detail } : step)),
+    );
+  }
+
+  function markRunningMicroStepFailed(message: string) {
+    setMicroSteps((current) =>
+      current.map((step) => (step.status === "running" ? { ...step, status: "failed", detail: message } : step)),
+    );
   }
 
   async function runSelectedGate() {
@@ -238,6 +321,10 @@ function App() {
                   <Play className="mr-2 h-4 w-4" />
                   {busy === "run" ? "Ejecutando..." : "Dry-run"}
                 </Button>
+                <Button variant="secondary" onClick={runMicroProcess} disabled={busy !== null}>
+                  <CircleDashed className="mr-2 h-4 w-4" />
+                  {busy === "microprocess" ? "Micro..." : "Microproceso"}
+                </Button>
                 <Button variant="secondary" onClick={runSelectedGate} disabled={busy !== null || !primaryGate}>
                   <Terminal className="mr-2 h-4 w-4" />
                   {busy === "gate" ? "Gate..." : primaryGate || "Sin gate"}
@@ -252,12 +339,58 @@ function App() {
         </section>
 
         {activeTab === "repo" && <RepoTab inspection={inspection} ollama={ollama} />}
+        {activeTab === "microproceso" && <MicroProcessTab steps={microSteps} run={run} gateResult={gateResult} />}
         {activeTab === "plan" && <PlanTab plan={plan} />}
         {activeTab === "patch" && <PatchTab draft={draft} review={review} />}
         {activeTab === "gates" && <GateTab inspection={inspection} plan={plan} gateResult={gateResult} />}
         {activeTab === "bitacora" && <HistoryTab run={run} runs={runs} />}
       </div>
     </main>
+  );
+}
+
+function MicroProcessTab({
+  steps,
+  run,
+  gateResult,
+}: {
+  steps: MicroStep[];
+  run: AgentRun | null;
+  gateResult: GateResult | null;
+}) {
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Microproceso">
+        <div className="grid gap-2">
+          {steps.map((step) => (
+            <div key={step.id} className="grid grid-cols-[130px_110px_minmax(0,1fr)] items-center gap-3 rounded border border-border px-3 py-2 text-sm">
+              <span className="font-medium">{step.label}</span>
+              <Badge tone={stepTone(step.status)}>{step.status}</Badge>
+              <span className="truncate text-muted-foreground">{step.detail}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card title="Resultado">
+        {run ? (
+          <div className="grid gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={run.status === "completed" ? "success" : "warning"}>{run.status}</Badge>
+              <Badge>{run.modelUsed}</Badge>
+              <Badge>{run.plan.recommendedGate}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">{run.objective}</p>
+            {gateResult && (
+              <p className="rounded border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                {gateResult.command}: {gateResult.status}
+              </p>
+            )}
+          </div>
+        ) : (
+          <Empty text="Sin microproceso reciente." />
+        )}
+      </Card>
+    </section>
   );
 }
 
@@ -466,6 +599,7 @@ function Empty({ text }: { text: string }) {
 function tabLabel(tab: Tab) {
   const labels: Record<Tab, string> = {
     repo: "Repo",
+    microproceso: "Microproceso",
     plan: "Plan",
     patch: "Patch",
     gates: "Gates",
@@ -478,6 +612,26 @@ function riskTone(risk: string) {
   if (risk === "red") return "danger";
   if (risk === "yellow") return "warning";
   return "success";
+}
+
+function stepTone(status: MicroStepStatus) {
+  if (status === "completed") return "success";
+  if (status === "failed") return "danger";
+  if (status === "blocked" || status === "running") return "warning";
+  return "neutral";
+}
+
+function gateStatus(status: string): MicroStepStatus {
+  if (status === "passed") return "completed";
+  if (status === "failed") return "failed";
+  return "blocked";
+}
+
+function selectSmallGate(gates: string[], recommendedGate: string) {
+  for (const gate of ["check:size", "check:screens", recommendedGate, "test", "build", "check"]) {
+    if (gate && gates.includes(gate)) return gate;
+  }
+  return "";
 }
 
 export default App;
