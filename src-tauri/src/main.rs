@@ -168,6 +168,11 @@ async fn commit_local_problem(request: LocalProblemRequest) -> Result<LocalProbl
     local_problems::commit_local_problem(request).await
 }
 
+#[tauri::command]
+async fn solve_local_problem(request: LocalProblemRequest) -> Result<LocalProblemRun, String> {
+    local_problems::solve_local_problem(request).await
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -191,7 +196,8 @@ fn main() {
             list_local_problems,
             local_problem_plan,
             prepare_local_problem,
-            commit_local_problem
+            commit_local_problem,
+            solve_local_problem
         ])
         .run(tauri::generate_context!())
         .expect("error while running OneEpis Local Agent");

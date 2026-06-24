@@ -40,6 +40,7 @@ import {
   runGate,
   runMicrocycle,
   runMicrocycleReport,
+  solveLocalProblem,
 } from "./lib/api";
 import type {
   AgentRun,
@@ -479,6 +480,20 @@ function App() {
     }
   }
 
+  async function solveSelectedLocalProblem() {
+    setBusy("localSolve");
+    setError(null);
+    try {
+      const result = await solveLocalProblem(repoPath, selectedLocalProblem);
+      setLocalRun(result);
+      setActiveTab("local");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     void loadAll();
   }, []);
@@ -652,6 +667,7 @@ function App() {
             onPlan={planSelectedLocalProblem}
             onPrepare={prepareSelectedLocalProblem}
             onCommit={commitSelectedLocalProblem}
+            onSolve={solveSelectedLocalProblem}
             busy={busy}
           />
         )}
@@ -969,6 +985,7 @@ function LocalProblemTab({
   onPlan,
   onPrepare,
   onCommit,
+  onSolve,
   busy,
 }: {
   problems: LocalProblemSpec[];
@@ -979,6 +996,7 @@ function LocalProblemTab({
   onPlan: () => void;
   onPrepare: () => void;
   onCommit: () => void;
+  onSolve: () => void;
   busy: string | null;
 }) {
   const selected = problems.find((problem) => problem.id === selectedProblem) ?? problems[0];
@@ -1025,6 +1043,10 @@ function LocalProblemTab({
             <Button variant="secondary" onClick={onCommit} disabled={busy !== null}>
               <CheckCircle2 className="mr-2 h-4 w-4" />
               {busy === "localCommit" ? "Validando..." : "Crear commit local"}
+            </Button>
+            <Button onClick={onSolve} disabled={busy !== null}>
+              <CircleDashed className="mr-2 h-4 w-4" />
+              {busy === "localSolve" ? "Resolviendo..." : "Resolver LOCAL"}
             </Button>
           </div>
         </div>

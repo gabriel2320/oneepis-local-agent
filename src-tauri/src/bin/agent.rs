@@ -164,6 +164,17 @@ async fn run() -> Result<(), String> {
                 .await?,
             )?;
         }
+        "local-problem-solve" => {
+            let repo_path = required_repo(&args)?;
+            let problem_id = required_option(&args, "--problem")?;
+            print_json(
+                &local_problems::solve_local_problem(LocalProblemRequest {
+                    repo_path: repo_path.to_string(),
+                    problem_id: problem_id.to_string(),
+                })
+                .await?,
+            )?;
+        }
         "run" => {
             let repo_path = required_repo(&args)?;
             let max_cycles = option_value(&args, "--max-cycles")
@@ -253,7 +264,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent evolution-plan <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent local-problems | agent local-problem-plan <repo> --problem LOCAL-001 | agent local-problem-prepare <repo> --problem LOCAL-001 | agent local-problem-commit <repo> --problem LOCAL-001 | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent evolution-plan <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent local-problems | agent local-problem-plan <repo> --problem LOCAL-001 | agent local-problem-prepare <repo> --problem LOCAL-001 | agent local-problem-commit <repo> --problem LOCAL-001 | agent local-problem-solve <repo> --problem LOCAL-003 | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
             .to_string(),
     )
 }

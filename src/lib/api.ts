@@ -151,6 +151,10 @@ export function commitLocalProblem(repoPath: string, problemId: string) {
   return safeInvoke<LocalProblemRun>("commit_local_problem", { request: { repoPath, problemId } });
 }
 
+export function solveLocalProblem(repoPath: string, problemId: string) {
+  return safeInvoke<LocalProblemRun>("solve_local_problem", { request: { repoPath, problemId } });
+}
+
 async function safeInvoke<T>(command: string, args: CommandArgs): Promise<T> {
   if (hasTauriBridge()) {
     try {
@@ -224,6 +228,8 @@ function previewResponse(command: string, args: CommandArgs) {
       return previewLocalProblemRun(repoPath, String(requestField(args, "problemId") ?? "LOCAL-001"), "ready_for_changes");
     case "commit_local_problem":
       return previewLocalProblemRun(repoPath, String(requestField(args, "problemId") ?? "LOCAL-001"), "blocked");
+    case "solve_local_problem":
+      return previewLocalProblemRun(repoPath, String(requestField(args, "problemId") ?? "LOCAL-003"), "blocked");
     default:
       throw new Error(PREVIEW_NOTICE);
   }

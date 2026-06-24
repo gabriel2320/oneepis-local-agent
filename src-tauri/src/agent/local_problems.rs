@@ -23,7 +23,7 @@ const GLOBAL_FORBIDDEN_SIGNALS: &[&str] = &[
     "dashboard",
     "receta",
     "prescription",
-    "firma",
+    "firma clinica",
     "signature",
     "external ai",
     "openai",
@@ -224,6 +224,52 @@ pub async fn commit_local_problem(request: LocalProblemRequest) -> Result<LocalP
     })
 }
 
+pub async fn solve_local_problem(request: LocalProblemRequest) -> Result<LocalProblemRun, String> {
+    let problem = local_problem_spec(&request.problem_id)?;
+    let inspection = inspect_repository(&request.repo_path)?;
+    let repo = canonical_repo(&request.repo_path)?;
+    let mut blockers = common_blocks(&inspection, &problem);
+
+    if inspection.dirty {
+        blockers.push(
+            "El solver LOCAL requiere proyecto limpio antes de preparar la rama.".to_string(),
+        );
+    }
+    if !blockers.is_empty() {
+        return Ok(blocked_run(&inspection.repo_path, &problem, blockers));
+    }
+
+    ensure_problem_branch(&repo, &inspection.current_branch, &problem.branch)?;
+    match problem.id.as_str() {
+        "LOCAL-003" => solve_local_003(&repo)?,
+        _ => {
+            return Ok(LocalProblemRun {
+                id: run_id(&inspection.repo_path, &problem.id),
+                problem_id: problem.id.clone(),
+                status: "blocked".to_string(),
+                repo_path: inspection.repo_path,
+                branch: problem.branch,
+                commit_sha: None,
+                changed_files: Vec::new(),
+                gate_results: Vec::new(),
+                blockers: vec![format!(
+                    "Solver autonomo aun no implementado para {}.",
+                    problem.id
+                )],
+                warnings: Vec::new(),
+                next_actions: vec![
+                    "Implementar una receta deterministica especifica antes de ejecutar este LOCAL."
+                        .to_string(),
+                ],
+                no_push: true,
+                summary: "Solver LOCAL detenido antes de editar.".to_string(),
+            });
+        }
+    }
+
+    commit_local_problem(request).await
+}
+
 fn local_problem_specs() -> Vec<LocalProblemSpec> {
     vec![
         spec(
@@ -337,6 +383,117 @@ fn local_problem_specs() -> Vec<LocalProblemSpec> {
             &["coverage pesada", "new feature", "dashboard"],
         ),
     ]
+}
+
+fn solve_local_003(repo: &Path) -> Result<(), String> {
+    let panel_path =
+        repo.join("apps/web/src/components/clinical/ai-chart/clinical-intent-result-panel.tsx");
+    let extracted_path = repo.join(
+        "apps/web/src/components/clinical/ai-chart/clinical-intent-result-evidence-panels.tsx",
+    );
+    if !panel_path.is_file() {
+        return Err("No se encontro clinical-intent-result-panel.tsx.".to_string());
+    }
+    if extracted_path.exists() {
+        return Err("El archivo extraido LOCAL-003 ya existe; no se sobrescribe.".to_string());
+    }
+
+    let mut panel = fs::read_to_string(&panel_path)
+        .map_err(|err| format!("No se pudo leer panel LOCAL-003: {err}"))?;
+    let mut extracted = Vec::new();
+    for function in [
+        "ProblemsEvidencePanel",
+        "shortSourceId",
+        "EvidenceMarksPanel",
+        "MissingDataPanel",
+    ] {
+        let block = extract_function_block(&mut panel, function)?;
+        extracted.push(export_function(block));
+    }
+    let import = "import {\n  EvidenceMarksPanel,\n  MissingDataPanel,\n  ProblemsEvidencePanel,\n} from \"./clinical-intent-result-evidence-panels\";\n";
+    if !panel.contains("clinical-intent-result-evidence-panels") {
+        let anchor = "import { ReviewItemsPanel } from \"./review-items-panel\";\n";
+        panel = panel.replacen(anchor, &format!("{anchor}{import}"), 1);
+    }
+    fs::write(&panel_path, panel)
+        .map_err(|err| format!("No se pudo escribir panel LOCAL-003: {err}"))?;
+
+    let mut body = String::from(
+        "\"use client\";\n\nimport type { ClinicalIntentResponse } from \"@/lib/types\";\n\n",
+    );
+    body.push_str(&extracted.join("\n\n"));
+    body.push('\n');
+    fs::write(&extracted_path, body)
+        .map_err(|err| format!("No se pudo escribir subpaneles LOCAL-003: {err}"))?;
+    Ok(())
+}
+
+fn export_function(block: String) -> String {
+    if block.starts_with("function ") {
+        block.replacen("function ", "export function ", 1)
+    } else {
+        block
+    }
+}
+
+fn extract_function_block(source: &mut String, function_name: &str) -> Result<String, String> {
+    let signature = format!("function {function_name}");
+    let start = source
+        .find(&signature)
+        .ok_or_else(|| format!("No se encontro funcion {function_name} para extraer."))?;
+    let params_open = source[start..]
+        .find('(')
+        .map(|offset| start + offset)
+        .ok_or_else(|| format!("Funcion {function_name} no tiene parametros."))?;
+    let params_close = matching_paren(source, params_open)
+        .ok_or_else(|| format!("Funcion {function_name} no cierra parametros."))?;
+    let open = source[params_close..]
+        .find('{')
+        .map(|offset| params_close + offset)
+        .ok_or_else(|| format!("Funcion {function_name} no tiene cuerpo."))?;
+    let mut depth = 0i32;
+    let mut end = None;
+    for (index, ch) in source[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(open + index + ch.len_utf8());
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut end = end.ok_or_else(|| format!("Funcion {function_name} no cierra."))?;
+    while source[end..].starts_with('\n') || source[end..].starts_with('\r') {
+        end += source[end..]
+            .chars()
+            .next()
+            .map(char::len_utf8)
+            .unwrap_or(0);
+    }
+    let block = source[start..end].trim_end().to_string();
+    source.replace_range(start..end, "");
+    Ok(block)
+}
+
+fn matching_paren(source: &str, open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    for (index, ch) in source[open..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(open + index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn spec(
@@ -680,6 +837,48 @@ mod tests {
         let _ = fs::remove_dir_all(repo);
     }
 
+    #[tokio::test]
+    async fn solve_local_003_extracts_subpanels_and_commits() {
+        let repo = temp_oneepis_repo("solve-local-003");
+        write_local_003_fixture(&repo);
+        commit_all(&repo);
+
+        let result = solve_local_problem(LocalProblemRequest {
+            repo_path: repo.display().to_string(),
+            problem_id: "LOCAL-003".to_string(),
+        })
+        .await
+        .expect("solve");
+
+        assert_eq!(result.status, "committed");
+        assert_eq!(
+            result.branch,
+            "agent/local-003-dividir-clinical-intent-result-panel"
+        );
+        assert!(result.commit_sha.is_some());
+        assert!(result
+            .changed_files
+            .iter()
+            .any(|file| file.ends_with("clinical-intent-result-evidence-panels.tsx")));
+        let panel = fs::read_to_string(
+            repo.join("apps/web/src/components/clinical/ai-chart/clinical-intent-result-panel.tsx"),
+        )
+        .expect("panel");
+        let extracted = fs::read_to_string(repo.join(
+            "apps/web/src/components/clinical/ai-chart/clinical-intent-result-evidence-panels.tsx",
+        ))
+        .expect("extracted");
+        assert!(panel.contains("clinical-intent-result-evidence-panels"));
+        assert!(!panel.contains("function MissingDataPanel"));
+        assert!(extracted.contains("export function ProblemsEvidencePanel"));
+        assert!(extracted.contains("export function EvidenceMarksPanel"));
+        assert!(extracted.contains("export function MissingDataPanel"));
+        assert!(git(&repo, &["status", "--short"])
+            .expect("status")
+            .is_empty());
+        let _ = fs::remove_dir_all(repo);
+    }
+
     fn temp_oneepis_repo(label: &str) -> std::path::PathBuf {
         let repo = std::env::temp_dir().join(format!(
             "oneepis-agent-local-problem-{label}-{}",
@@ -700,6 +899,70 @@ mod tests {
         .expect("package");
         commit_all(&repo);
         repo
+    }
+
+    fn write_local_003_fixture(repo: &Path) {
+        let dir = repo.join("apps/web/src/components/clinical/ai-chart");
+        fs::create_dir_all(&dir).expect("component dir");
+        fs::write(
+            dir.join("review-items-panel.tsx"),
+            "export function ReviewItemsPanel() { return null; }\n",
+        )
+        .expect("review panel");
+        fs::write(
+            dir.join("clinical-intent-result-panel.tsx"),
+            r#""use client";
+
+import type { ClinicalIntentResponse } from "@/lib/types";
+
+import { ReviewItemsPanel } from "./review-items-panel";
+
+export function ClinicalIntentResultPanel({ intent }: { intent: ClinicalIntentResponse }) {
+  return (
+    <div>
+      <ProblemsEvidencePanel intent={intent} />
+      <ReviewItemsPanel />
+      <EvidenceMarksPanel intent={intent} />
+      <MissingDataPanel intent={intent} />
+    </div>
+  );
+}
+
+function ProblemsEvidencePanel({ intent }: { intent: ClinicalIntentResponse }) {
+  return (
+    <div>
+      <p>Problemas y evidencia</p>
+      {intent.problem_contexts.map((context) => (
+        <p key={context.title}>Fuente: registro {shortSourceId(context.title)}</p>
+      ))}
+    </div>
+  );
+}
+
+function shortSourceId(sourceId: string) {
+  return sourceId.slice(0, 8);
+}
+
+function EvidenceMarksPanel({ intent }: { intent: ClinicalIntentResponse }) {
+  return (
+    <ul>
+      {intent.evidence_marks.map((mark) => (
+        <li key={mark.label}>{mark.label}</li>
+      ))}
+    </ul>
+  );
+}
+
+function MissingDataPanel({ intent }: { intent: ClinicalIntentResponse }) {
+  return (
+    <ul>
+      {intent.missing_data.map((item) => <li key={item}>{item}</li>)}
+    </ul>
+  );
+}
+"#,
+        )
+        .expect("clinical intent panel");
     }
 
     fn commit_all(repo: &Path) {
