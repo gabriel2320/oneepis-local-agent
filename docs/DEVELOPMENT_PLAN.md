@@ -23,6 +23,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Run declared package gates through typed commands only.
 - Explain every state in natural Spanish: current action, reason, next action, and active governance guardrail.
 - Keep help text operational and tied to cycle state, not marketing copy.
+- Provide `DevelopmentReadiness` before planning: repo readiness, Ollama/model health, required gates, blockers, next actions, and suggested microcycles.
 
 ### v0.3 Controlled Execution
 
@@ -58,18 +59,20 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `PatchReview`: deterministic checks, blocks, approval status, and confirmation token.
 - `GateResult`: command, status, exit code, duration, sanitized stdout, and sanitized stderr.
 - `AgentNarrative`: frontend-only explanation of what the agent is doing, why, next action, guardrail, visible power, and checklist.
+- `DevelopmentReadiness`: Spanish readiness report for local OneEpis programming with checks, blockers, warnings, next actions, required gates, model summary, and suggested microcycles.
 
 ## Governed Power
 
 The agent may become more useful without becoming unbounded. Extra power must follow this ladder:
 
 1. Inspect local repo, Git, governance, Ollama, gates, and history.
-2. Produce a microplan with risk, surfaces, gates, and warnings.
-3. Produce a `PatchDraft` without writing target files.
-4. Review the draft with deterministic safety checks.
-5. Run only declared gates from `package.json`.
-6. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
-7. Never push automatically.
+2. Produce a readiness diagnosis with blockers, warnings, gates, model health, and suggested microcycles.
+3. Produce a microplan with risk, surfaces, gates, and warnings.
+4. Produce a `PatchDraft` without writing target files.
+5. Review the draft with deterministic safety checks.
+6. Run only declared gates from `package.json`.
+7. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
+8. Never push automatically.
 
 ## Gates
 

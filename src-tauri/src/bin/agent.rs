@@ -5,6 +5,7 @@ use agent::gates;
 use agent::ollama;
 use agent::patch;
 use agent::persistence;
+use agent::readiness;
 use agent::repo;
 use agent::runner;
 use agent::types::{ApplyPatchRequest, PatchDraft, RunRequest};
@@ -31,6 +32,10 @@ async fn run() -> Result<(), String> {
         }
         "ollama" => {
             print_json(&ollama::get_ollama_status(None).await?)?;
+        }
+        "readiness" => {
+            let repo_path = required_repo(&args)?;
+            print_json(&readiness::development_readiness(repo_path, None).await?)?;
         }
         "plan" => {
             let repo_path = required_repo(&args)?;
@@ -137,7 +142,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
             .to_string(),
     )
 }

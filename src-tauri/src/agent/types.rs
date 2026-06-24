@@ -74,6 +74,41 @@ pub struct OllamaStatus {
     pub missing_policy_models: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadinessCheck {
+    pub name: String,
+    pub status: String,
+    pub detail: String,
+    pub action: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestedMicrocycle {
+    pub title: String,
+    pub objective: String,
+    pub risk_level: String,
+    pub gates: Vec<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevelopmentReadiness {
+    pub repo_path: String,
+    pub profile: String,
+    pub status: String,
+    pub summary: String,
+    pub checks: Vec<ReadinessCheck>,
+    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
+    pub next_actions: Vec<String>,
+    pub suggested_microcycles: Vec<SuggestedMicrocycle>,
+    pub required_gates: Vec<String>,
+    pub local_model_summary: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MicroPlan {

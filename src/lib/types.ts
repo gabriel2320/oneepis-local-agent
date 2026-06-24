@@ -45,6 +45,35 @@ export type OllamaStatus = {
   missingPolicyModels: string[];
 };
 
+export type ReadinessCheck = {
+  name: string;
+  status: "ready" | "blocked" | string;
+  detail: string;
+  action: string;
+};
+
+export type SuggestedMicrocycle = {
+  title: string;
+  objective: string;
+  riskLevel: "green" | "yellow" | "red" | string;
+  gates: string[];
+  reason: string;
+};
+
+export type DevelopmentReadiness = {
+  repoPath: string;
+  profile: "oneepis" | "generic" | string;
+  status: "ready" | "attention" | "blocked" | string;
+  summary: string;
+  checks: ReadinessCheck[];
+  blockers: string[];
+  warnings: string[];
+  nextActions: string[];
+  suggestedMicrocycles: SuggestedMicrocycle[];
+  requiredGates: string[];
+  localModelSummary: string;
+};
+
 export type MicroPlan = {
   objective: string;
   recommendedGate: string;

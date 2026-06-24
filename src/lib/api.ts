@@ -4,6 +4,7 @@ import type {
   AgentRunSummary,
   ApplyPatchRequest,
   ApplyPatchResult,
+  DevelopmentReadiness,
   GateResult,
   MicroPlan,
   OllamaStatus,
@@ -18,6 +19,10 @@ export function inspectRepository(repoPath: string) {
 
 export function getOllamaStatus(baseUrl?: string) {
   return invoke<OllamaStatus>("get_ollama_status", { baseUrl });
+}
+
+export function getDevelopmentReadiness(repoPath: string, baseUrl?: string) {
+  return invoke<DevelopmentReadiness>("development_readiness", { repoPath, baseUrl });
 }
 
 export function planMicrocycle(repoPath: string, objective: string, baseUrl?: string) {

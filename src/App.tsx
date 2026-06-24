@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   draftPatch,
+  getDevelopmentReadiness,
   getOllamaStatus,
   inspectRepository,
   listRuns,
@@ -28,6 +29,7 @@ import {
 import type {
   AgentRun,
   AgentRunSummary,
+  DevelopmentReadiness,
   GateResult,
   MicroPlan,
   OllamaStatus,
@@ -43,7 +45,7 @@ import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -67,6 +69,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>("repo");
   const [inspection, setInspection] = useState<RepoInspection | null>(null);
   const [ollama, setOllama] = useState<OllamaStatus | null>(null);
+  const [readiness, setReadiness] = useState<DevelopmentReadiness | null>(null);
   const [plan, setPlan] = useState<MicroPlan | null>(null);
   const [draft, setDraft] = useState<PatchDraft | null>(null);
   const [review, setReview] = useState<PatchReview | null>(null);
@@ -99,14 +102,16 @@ function App() {
     setBusy("inspect");
     setError(null);
     try {
-      const [repo, ai, history] = await Promise.all([
+      const [repo, ai, history, ready] = await Promise.all([
         inspectRepository(repoPath),
         getOllamaStatus(),
         listRuns(20),
+        getDevelopmentReadiness(repoPath),
       ]);
       setInspection(repo);
       setOllama(ai);
       setRuns(history);
+      setReadiness(ready);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -168,14 +173,16 @@ function App() {
     setMicroSteps(initialMicroSteps);
     try {
       markMicroStep("inspect", "running", "Leyendo repo, modelos y bitacora.");
-      const [repo, ai, history] = await Promise.all([
+      const [repo, ai, history, ready] = await Promise.all([
         inspectRepository(repoPath),
         getOllamaStatus(),
         listRuns(20),
+        getDevelopmentReadiness(repoPath),
       ]);
       setInspection(repo);
       setOllama(ai);
       setRuns(history);
+      setReadiness(ready);
       markMicroStep("inspect", repo.blocks.length > 0 ? "blocked" : "completed", repo.blocks[0] ?? `${repo.projectName} en ${repo.currentBranch}.`);
 
       markMicroStep("plan", "running", "Generando microplan gobernado.");
@@ -266,6 +273,7 @@ function App() {
               <Badge tone={plan?.riskLevel === "red" ? "danger" : plan?.riskLevel === "yellow" ? "warning" : "neutral"}>
                 Riesgo {plan?.riskLevel ?? "sin plan"}
               </Badge>
+              <Badge tone={readinessTone(readiness?.status)}>{readiness ? `Preparacion ${readinessLabel(readiness.status)}` : "Preparacion pendiente"}</Badge>
             </div>
           </div>
           <nav className="flex flex-wrap gap-2">
@@ -350,6 +358,7 @@ function App() {
         </section>
 
         {activeTab === "repo" && <RepoTab inspection={inspection} ollama={ollama} />}
+        {activeTab === "preparacion" && <ReadinessTab readiness={readiness} />}
         {activeTab === "microproceso" && <MicroProcessTab steps={microSteps} run={run} gateResult={gateResult} />}
         {activeTab === "plan" && <PlanTab plan={plan} />}
         {activeTab === "patch" && <PatchTab draft={draft} review={review} />}
@@ -477,6 +486,60 @@ function RepoTab({ inspection, ollama }: { inspection: RepoInspection | null; ol
         </div>
         <p className="mt-3 text-xs text-muted-foreground break-words">{ollama?.models.length ?? 0} modelos en {ollama?.baseUrl ?? "Ollama"}</p>
       </Card>
+    </section>
+  );
+}
+
+function ReadinessTab({ readiness }: { readiness: DevelopmentReadiness | null }) {
+  if (!readiness) return <Empty text="Sin diagnostico de preparacion. Ejecuta Inspeccionar." />;
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Preparacion OneEpis" description="Diagnostico para programacion asistida con modelos locales.">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={readinessTone(readiness.status)}>{readinessLabel(readiness.status)}</Badge>
+          <Badge>{readiness.profile}</Badge>
+          <Badge>{readiness.requiredGates.length} gates utiles</Badge>
+        </div>
+        <p className="mt-3 text-sm leading-6 break-words">{readiness.summary}</p>
+        <HelpText label="Modelos locales" value={readiness.localModelSummary} />
+        <div className="mt-3 grid gap-2">
+          {readiness.checks.map((check) => (
+            <div key={check.name} className="min-w-0 rounded border border-border px-3 py-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={check.status === "ready" ? "success" : "warning"}>{readinessLabel(check.status)}</Badge>
+                <span className="font-medium break-words">{check.name}</span>
+              </div>
+              <p className="mt-1 text-muted-foreground break-words">{check.detail}</p>
+              {check.status !== "ready" && <p className="mt-1 text-xs text-warning break-words">{check.action}</p>}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Siguiente Accion" description="Orden sugerido para cerrar el ciclo.">
+          <List items={readiness.nextActions} empty="Sin acciones pendientes." />
+          <List items={readiness.blockers} tone="warning" />
+          <List items={readiness.warnings} tone="warning" />
+        </Card>
+        <Card title="Microciclos Sugeridos" description="Planes pequenos alineados con OneEpis.">
+          <div className="grid gap-3">
+            {readiness.suggestedMicrocycles.map((item) => (
+              <div key={item.title} className="min-w-0 rounded border border-border bg-background px-3 py-2">
+                <div className="flex flex-wrap gap-2">
+                  <Badge tone={riskTone(item.riskLevel)}>Riesgo {item.riskLevel}</Badge>
+                  {item.gates.map((gate) => (
+                    <Badge key={gate}>{gate}</Badge>
+                  ))}
+                </div>
+                <h3 className="mt-2 text-sm font-semibold break-words">{item.title}</h3>
+                <p className="mt-1 text-sm text-muted-foreground break-words">{item.objective}</p>
+                <p className="mt-1 text-xs text-muted-foreground break-words">{item.reason}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
     </section>
   );
 }
@@ -657,6 +720,7 @@ function Empty({ text }: { text: string }) {
 function tabLabel(tab: Tab) {
   const labels: Record<Tab, string> = {
     repo: "Repo",
+    preparacion: "Preparacion",
     microproceso: "Microproceso",
     plan: "Plan",
     patch: "Patch",
@@ -670,6 +734,22 @@ function riskTone(risk: string) {
   if (risk === "red") return "danger";
   if (risk === "yellow") return "warning";
   return "success";
+}
+
+function readinessTone(status?: string) {
+  if (status === "ready") return "success";
+  if (status === "blocked") return "danger";
+  if (status === "attention") return "warning";
+  return "neutral";
+}
+
+function readinessLabel(status?: string) {
+  const labels: Record<string, string> = {
+    ready: "listo",
+    attention: "atencion",
+    blocked: "bloqueado",
+  };
+  return status ? labels[status] ?? status : "pendiente";
 }
 
 function tonePanel(tone: NarrativeTone) {

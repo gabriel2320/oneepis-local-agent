@@ -3,6 +3,7 @@ pub mod governance;
 pub mod ollama;
 pub mod patch;
 pub mod persistence;
+pub mod readiness;
 pub mod repo;
 pub mod runner;
 pub mod safety;

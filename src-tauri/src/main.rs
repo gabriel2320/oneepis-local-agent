@@ -4,11 +4,12 @@ use agent::gates;
 use agent::ollama;
 use agent::patch;
 use agent::persistence;
+use agent::readiness;
 use agent::repo;
 use agent::runner;
 use agent::types::{
-    AgentRun, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, GateResult, MicroPlan,
-    OllamaStatus, PatchDraft, PatchReview, RepoInspection, RunRequest,
+    AgentRun, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, DevelopmentReadiness,
+    GateResult, MicroPlan, OllamaStatus, PatchDraft, PatchReview, RepoInspection, RunRequest,
 };
 
 #[tauri::command(rename_all = "camelCase")]
@@ -19,6 +20,14 @@ fn inspect_repository(repo_path: String) -> Result<RepoInspection, String> {
 #[tauri::command(rename_all = "camelCase")]
 async fn get_ollama_status(base_url: Option<String>) -> Result<OllamaStatus, String> {
     ollama::get_ollama_status(base_url).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn development_readiness(
+    repo_path: String,
+    base_url: Option<String>,
+) -> Result<DevelopmentReadiness, String> {
+    readiness::development_readiness(&repo_path, base_url).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -78,6 +87,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             inspect_repository,
             get_ollama_status,
+            development_readiness,
             plan_microcycle,
             run_microcycle,
             draft_patch,
