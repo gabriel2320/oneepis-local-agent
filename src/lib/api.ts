@@ -5,6 +5,7 @@ import type {
   AgentRunSummary,
   ApplyPatchRequest,
   ApplyPatchResult,
+  ApplyReadiness,
   DevelopmentBrief,
   DevelopmentContextPack,
   DevelopmentReadiness,
@@ -85,6 +86,18 @@ export function reviewPatch(draft: PatchDraft) {
 
 export function applyApprovedPatch(request: ApplyPatchRequest) {
   return invoke<ApplyPatchResult>("apply_approved_patch", { request });
+}
+
+export function prepareApplyReadiness(draft: PatchDraft, confirmToken?: string | null) {
+  return invoke<ApplyReadiness>("prepare_apply_readiness", {
+    request: {
+      draft,
+      allowApply: true,
+      confirmToken: confirmToken ?? null,
+      branchStrategy: "create_safe_branch",
+      databaseUrl: null,
+    },
+  });
 }
 
 export function runGate(repoPath: string, gate: string) {

@@ -281,6 +281,22 @@ pub struct ApplyPatchResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ApplyReadiness {
+    pub draft_id: String,
+    pub status: String,
+    pub summary: String,
+    pub can_apply: bool,
+    pub current_branch: String,
+    pub target_branch: String,
+    pub branch_strategy: String,
+    pub confirm_token: String,
+    pub checks: Vec<ReviewCheck>,
+    pub blocks: Vec<String>,
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GateResult {
     pub gate: String,
     pub command: String,

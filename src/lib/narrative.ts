@@ -187,6 +187,8 @@ export function explainStatus(status: string) {
     skipped: "omitido",
     passed: "paso",
     approved: "aprobado",
+    ready_for_confirmation: "listo para confirmacion",
+    ready_to_apply: "listo para apply",
   };
   return labels[status] ?? status;
 }

@@ -10,7 +10,7 @@ use agent::readiness;
 use agent::repo;
 use agent::runner;
 use agent::types::{
-    AgentRun, AgentRunReport, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult,
+    AgentRun, AgentRunReport, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, ApplyReadiness,
     DevelopmentBrief, DevelopmentContextPack, DevelopmentReadiness, DevelopmentWorkPackage,
     GateResult, MicroPlan, OllamaStatus, PatchDraft, PatchReview, RepoInspection, RunRequest,
 };
@@ -97,6 +97,11 @@ fn review_patch(draft: PatchDraft) -> Result<PatchReview, String> {
 }
 
 #[tauri::command]
+fn prepare_apply_readiness(request: ApplyPatchRequest) -> Result<ApplyReadiness, String> {
+    patch::prepare_apply_readiness(request)
+}
+
+#[tauri::command]
 async fn apply_approved_patch(request: ApplyPatchRequest) -> Result<ApplyPatchResult, String> {
     patch::apply_approved_patch(request).await
 }
@@ -133,6 +138,7 @@ fn main() {
             run_microcycle_report,
             draft_patch,
             review_patch,
+            prepare_apply_readiness,
             apply_approved_patch,
             run_gate,
             list_runs

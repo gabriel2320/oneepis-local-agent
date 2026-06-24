@@ -27,6 +27,7 @@ import {
   inspectRepository,
   listRuns,
   planMicrocycle,
+  prepareApplyReadiness,
   reviewPatch,
   runGate,
   runMicrocycle,
@@ -36,6 +37,7 @@ import type {
   AgentRun,
   AgentRunReport,
   AgentRunSummary,
+  ApplyReadiness,
   DevelopmentBrief,
   DevelopmentContextPack,
   DevelopmentReadiness,
@@ -89,6 +91,7 @@ function App() {
   const [plan, setPlan] = useState<MicroPlan | null>(null);
   const [draft, setDraft] = useState<PatchDraft | null>(null);
   const [review, setReview] = useState<PatchReview | null>(null);
+  const [applyReadiness, setApplyReadiness] = useState<ApplyReadiness | null>(null);
   const [gateResult, setGateResult] = useState<GateResult | null>(null);
   const [run, setRun] = useState<AgentRun | null>(null);
   const [report, setReport] = useState<AgentRunReport | null>(null);
@@ -158,6 +161,7 @@ function App() {
       const nextReview = await reviewPatch(nextDraft);
       setDraft(nextDraft);
       setReview(nextReview);
+      setApplyReadiness(null);
       setPlan(nextDraft.plan);
       setActiveTab("patch");
     } catch (err) {
@@ -232,6 +236,24 @@ function App() {
       const nextReport = await runMicrocycleReport(repoPath, objective);
       setReport(nextReport);
       setActiveTab("reporte");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function prepareApply() {
+    if (!draft) {
+      setError("No hay PatchDraft para prevalidar.");
+      return;
+    }
+    setBusy("applyReadiness");
+    setError(null);
+    try {
+      const readiness = await prepareApplyReadiness(draft);
+      setApplyReadiness(readiness);
+      setActiveTab("patch");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -469,7 +491,15 @@ function App() {
         {activeTab === "microproceso" && <MicroProcessTab steps={microSteps} run={run} gateResult={gateResult} />}
         {activeTab === "reporte" && <ReportTab report={report} />}
         {activeTab === "plan" && <PlanTab plan={plan} />}
-        {activeTab === "patch" && <PatchTab draft={draft} review={review} />}
+        {activeTab === "patch" && (
+          <PatchTab
+            draft={draft}
+            review={review}
+            readiness={applyReadiness}
+            onPrepareApply={prepareApply}
+            preparing={busy === "applyReadiness"}
+          />
+        )}
         {activeTab === "gates" && <GateTab inspection={inspection} plan={plan} gateResult={gateResult} />}
         {activeTab === "bitacora" && <HistoryTab run={run} runs={runs} />}
       </div>
@@ -867,7 +897,19 @@ function PlanTab({ plan }: { plan: MicroPlan | null }) {
   );
 }
 
-function PatchTab({ draft, review }: { draft: PatchDraft | null; review: PatchReview | null }) {
+function PatchTab({
+  draft,
+  review,
+  readiness,
+  onPrepareApply,
+  preparing,
+}: {
+  draft: PatchDraft | null;
+  review: PatchReview | null;
+  readiness: ApplyReadiness | null;
+  onPrepareApply: () => void;
+  preparing: boolean;
+}) {
   if (!draft) return <Empty text="Sin PatchDraft." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -894,6 +936,27 @@ function PatchTab({ draft, review }: { draft: PatchDraft | null; review: PatchRe
           </>
         ) : (
           <Empty text="Sin revision." />
+        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={onPrepareApply} disabled={preparing || !review}>
+            <ShieldCheck className="mr-2 h-4 w-4" />
+            {preparing ? "Prevalidando..." : "Prevalidar Apply"}
+          </Button>
+        </div>
+        {readiness && (
+          <div className="mt-4 rounded border border-border bg-background px-3 py-2 text-sm">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={applyReadinessTone(readiness.status)}>{explainStatus(readiness.status)}</Badge>
+              <Badge>{readiness.targetBranch}</Badge>
+              <Badge>{readiness.branchStrategy}</Badge>
+            </div>
+            <p className="mt-2 break-words text-muted-foreground">{readiness.summary}</p>
+            <HelpText label="Token requerido" value={readiness.confirmToken} />
+            <HelpText label="Rama actual" value={readiness.currentBranch} />
+            <List items={readiness.checks.map((item) => `${item.name}: ${explainStatus(item.status)} - ${item.detail}`)} />
+            <List items={readiness.blocks} tone="warning" empty="Sin bloqueos de apply." />
+            <List items={readiness.nextActions} empty="Sin acciones siguientes." />
+          </div>
         )}
         <List items={draft.risks} tone="warning" />
       </Card>
@@ -1036,6 +1099,13 @@ function riskTone(risk: string) {
   if (risk === "red") return "danger";
   if (risk === "yellow") return "warning";
   return "success";
+}
+
+function applyReadinessTone(status: string) {
+  if (status === "ready_to_apply") return "success";
+  if (status === "ready_for_confirmation") return "warning";
+  if (status === "blocked") return "danger";
+  return "neutral";
 }
 
 function readinessTone(status?: string) {

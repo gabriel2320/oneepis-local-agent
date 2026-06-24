@@ -38,6 +38,7 @@ El agente local puede actuar con mas poder solo dentro de estos limites:
 - producir microplan con riesgo, superficies, gates y warnings;
 - producir `PatchDraft` revisable sin escritura real;
 - revisar drafts con checks deterministas;
+- prevalidar apply con `ApplyReadiness` sin escribir archivos ni cambiar de rama;
 - ejecutar un gate declarado por `package.json`;
 - preparar apply controlado solo desde v0.3, con repo limpio, rama segura, token humano y riesgo no rojo.
 

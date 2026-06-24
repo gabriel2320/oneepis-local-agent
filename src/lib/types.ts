@@ -209,6 +209,20 @@ export type ApplyPatchResult = {
   messages: string[];
 };
 
+export type ApplyReadiness = {
+  draftId: string;
+  status: "ready_for_confirmation" | "ready_to_apply" | "blocked" | string;
+  summary: string;
+  canApply: boolean;
+  currentBranch: string;
+  targetBranch: string;
+  branchStrategy: "reuse" | "create_safe_branch" | string;
+  confirmToken: string;
+  checks: ReviewCheck[];
+  blocks: string[];
+  nextActions: string[];
+};
+
 export type GateResult = {
   gate: string;
   command: string;

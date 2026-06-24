@@ -58,10 +58,11 @@ Aplicacion controlada de patches desde v0.3:
 
 ```bash
 npm run agent -- review draft.json
+npm run agent -- prepare-apply draft.json
 npm run agent -- apply draft.json --confirm-token APPLY:draft-id --branch-strategy create_safe_branch
 ```
 
-Los drafts generados por v0.2 quedan bloqueados por diseno. El comando `apply` existe para drafts concretos, no bloqueados, con diff real y revision aprobada.
+Los drafts generados por v0.2 quedan bloqueados por diseno. `prepare-apply` no escribe archivos: informa si el draft esta bloqueado, listo para confirmacion o listo para apply en rama segura `agent/<objetivo>`. El comando `apply` existe para drafts concretos, no bloqueados, con diff real, revision aprobada, token humano y rama segura.
 
 ## Configuracion
 
@@ -160,6 +161,7 @@ Estado actual:
 - `DevelopmentContextPack` con extractos locales sanitizados, limites de bytes, warnings, gates y notas de prompt para Ollama.
 - `DevelopmentBrief` con orden de trabajo, prompts, contrato de respuesta y propuesta estructurada opcional desde Ollama.
 - `AgentRunReport` con Markdown revisable para PR y microprocesos cerrados.
+- `ApplyReadiness` para prevalidar apply v0.3 sin escribir: token requerido, rama segura, checks, bloqueos y siguientes acciones.
 - Gates declarados por `package.json`.
 - Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.

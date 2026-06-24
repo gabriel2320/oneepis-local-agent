@@ -32,6 +32,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 
 ### v0.3 Controlled Execution
 
+- Prevalidate controlled apply with `ApplyReadiness`: deterministic review, clean Git, safe branch, `git apply --check`, and human confirmation state.
 - Apply patches only when the target repo is Git, clean, on a safe local branch, and the review token matches.
 - Use `git apply --check` before `git apply`.
 - Record human decisions and gate results.
@@ -64,6 +65,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `MicroPlan`: objective, recommended gate, risk level, touched surfaces, required gates, steps, warnings, blocked state, and model used.
 - `PatchDraft`: summary, rationale, proposed files, unified diff, risks, gates, blocked state, plan, and creation metadata.
 - `PatchReview`: deterministic checks, blocks, approval status, and confirmation token.
+- `ApplyReadiness`: read-only controlled-apply preflight with target branch, current branch, token, checks, blocks, status, and next actions.
 - `GateResult`: command, status, exit code, duration, sanitized stdout, and sanitized stderr.
 - `AgentNarrative`: frontend-only explanation of what the agent is doing, why, next action, guardrail, visible power, and checklist.
 - `DevelopmentReadiness`: Spanish readiness report for local OneEpis programming with checks, blockers, warnings, next actions, required gates, model summary, and suggested microcycles.
@@ -86,9 +88,10 @@ The agent may become more useful without becoming unbounded. Extra power must fo
 6. Produce a microplan with risk, surfaces, gates, and warnings.
 7. Produce a `PatchDraft` without writing target files.
 8. Review the draft with deterministic safety checks.
-9. Run only declared gates from `package.json`.
-10. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
-11. Never push automatically.
+9. Prevalidate controlled apply without writing: clean Git, safe branch, token state, and `git apply --check`.
+10. Run only declared gates from `package.json`.
+11. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
+12. Never push automatically.
 
 ## Gates
 

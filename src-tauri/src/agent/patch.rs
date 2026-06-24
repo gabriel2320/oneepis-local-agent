@@ -3,7 +3,8 @@ use crate::agent::repo::{canonical_repo, declared_gates, git, inspect_repository
 use crate::agent::runner::plan_microcycle;
 use crate::agent::safety::{sanitize_log, sha256_hex};
 use crate::agent::types::{
-    ApplyPatchRequest, ApplyPatchResult, PatchDraft, PatchReview, RepoInspection, ReviewCheck,
+    ApplyPatchRequest, ApplyPatchResult, ApplyReadiness, PatchDraft, PatchReview, RepoInspection,
+    ReviewCheck,
 };
 use chrono::Utc;
 use std::fs;
@@ -84,35 +85,35 @@ pub fn review_patch(draft: &PatchDraft) -> Result<PatchReview, String> {
         &mut blocks,
         "draft-state",
         !draft.blocked,
-        "PatchDraft no debe estar bloqueado.",
+        "PatchDraft debe estar desbloqueado.",
     );
     check(
         &mut checks,
         &mut blocks,
         "risk-level",
         draft.plan.risk_level != "red",
-        "Riesgo rojo requiere contrato/manual review antes de aplicar.",
+        "Riesgo debe ser verde o amarillo para apply controlado.",
     );
     check(
         &mut checks,
         &mut blocks,
         "diff-present",
         !draft.unified_diff.trim().is_empty(),
-        "Falta unified diff aplicable.",
+        "Unified diff debe estar presente.",
     );
     check(
         &mut checks,
         &mut blocks,
         "diff-size",
         draft.unified_diff.len() <= MAX_DIFF_BYTES,
-        "Diff excede el limite de seguridad.",
+        "Diff debe quedar bajo el limite de seguridad.",
     );
     check(
         &mut checks,
         &mut blocks,
         "gates-present",
         !draft.gates.is_empty(),
-        "PatchDraft requiere al menos un gate declarado.",
+        "PatchDraft debe declarar al menos un gate.",
     );
 
     let patch_files = patch_files(&draft.unified_diff);
@@ -129,7 +130,7 @@ pub fn review_patch(draft: &PatchDraft) -> Result<PatchReview, String> {
         &mut blocks,
         "diff-paths",
         safe_paths,
-        "Diff contiene rutas absolutas o parent traversal.",
+        "Diff debe usar rutas relativas seguras.",
     );
 
     for gate in &draft.gates {
@@ -138,7 +139,7 @@ pub fn review_patch(draft: &PatchDraft) -> Result<PatchReview, String> {
             &mut blocks,
             &format!("gate:{gate}"),
             gates.contains(gate),
-            &format!("Gate no declarado por el repo: {gate}."),
+            &format!("Gate debe estar declarado por el repo: {gate}."),
         );
     }
 
@@ -152,44 +153,169 @@ pub fn review_patch(draft: &PatchDraft) -> Result<PatchReview, String> {
     })
 }
 
-pub async fn apply_approved_patch(request: ApplyPatchRequest) -> Result<ApplyPatchResult, String> {
+pub fn prepare_apply_readiness(request: ApplyPatchRequest) -> Result<ApplyReadiness, String> {
     let review = review_patch(&request.draft)?;
-    let mut messages = Vec::new();
+    let repo = canonical_repo(&request.draft.repo_path)?;
+    let inspection = inspect_repository(&request.draft.repo_path)?;
+    let target_branch = safe_branch_name(&request.draft.objective);
+    let mut checks = review.checks.clone();
+    let mut blocks = review.blocks.clone();
+
+    check(
+        &mut checks,
+        &mut blocks,
+        "review-approved",
+        review.approved,
+        "PatchReview debe estar aprobado.",
+    );
+    check(
+        &mut checks,
+        &mut blocks,
+        "repo-git",
+        inspection.is_git_repo,
+        "Repo objetivo debe ser Git.",
+    );
+    check(
+        &mut checks,
+        &mut blocks,
+        "worktree-clean",
+        !inspection.dirty,
+        "Worktree debe estar limpio antes de apply.",
+    );
+    check(
+        &mut checks,
+        &mut blocks,
+        "branch-strategy-supported",
+        matches!(
+            request.branch_strategy.as_str(),
+            "create_safe_branch" | "reuse"
+        ),
+        "branchStrategy debe ser create_safe_branch o reuse.",
+    );
+    let safe_branch_ready = request.branch_strategy == "create_safe_branch"
+        || inspection.current_branch == target_branch;
+    check(
+        &mut checks,
+        &mut blocks,
+        "safe-branch",
+        safe_branch_ready,
+        &format!("Apply requiere rama segura {target_branch} o branchStrategy=create_safe_branch."),
+    );
+
+    if review.approved
+        && inspection.is_git_repo
+        && !inspection.dirty
+        && matches!(
+            request.branch_strategy.as_str(),
+            "create_safe_branch" | "reuse"
+        )
+        && safe_branch_ready
+    {
+        match git_apply(&repo, &request.draft.unified_diff, true) {
+            Ok(()) => push_status(
+                &mut checks,
+                "git-apply-check",
+                "passed",
+                "git apply --check acepto el diff.",
+            ),
+            Err(err) => {
+                let detail = format!("git apply --check bloqueo el diff: {err}");
+                push_status(&mut checks, "git-apply-check", "blocked", &detail);
+                blocks.push(detail);
+            }
+        }
+    } else {
+        push_status(
+            &mut checks,
+            "git-apply-check",
+            "skipped",
+            "Se omite hasta resolver revision, Git, limpieza y rama segura.",
+        );
+    }
+
+    match request.confirm_token.as_deref() {
+        Some(token) if token == review.confirm_token => push_status(
+            &mut checks,
+            "human-confirmation",
+            "passed",
+            "Token humano coincide con PatchReview.",
+        ),
+        Some(_) => {
+            let detail = "Token de confirmacion invalido.".to_string();
+            push_status(&mut checks, "human-confirmation", "blocked", &detail);
+            blocks.push(detail);
+        }
+        None => push_status(
+            &mut checks,
+            "human-confirmation",
+            "pending",
+            &format!("Confirmar manualmente con {}.", review.confirm_token),
+        ),
+    }
+
+    let has_confirmation = request.confirm_token.as_deref() == Some(review.confirm_token.as_str());
+    let status = if !blocks.is_empty() {
+        "blocked"
+    } else if has_confirmation {
+        "ready_to_apply"
+    } else {
+        "ready_for_confirmation"
+    };
+    let can_apply = status == "ready_to_apply";
+    let summary = match status {
+        "ready_to_apply" => format!(
+            "PatchDraft {} listo para apply controlado en {target_branch}.",
+            request.draft.id
+        ),
+        "ready_for_confirmation" => format!(
+            "PatchDraft {} listo para confirmacion humana; aun no aplica cambios.",
+            request.draft.id
+        ),
+        _ => format!(
+            "PatchDraft {} bloqueado antes de apply controlado.",
+            request.draft.id
+        ),
+    };
+    let next_actions = apply_next_actions(status, &review.confirm_token, &target_branch, &blocks);
+
+    Ok(ApplyReadiness {
+        draft_id: request.draft.id,
+        status: status.to_string(),
+        summary,
+        can_apply,
+        current_branch: inspection.current_branch,
+        target_branch,
+        branch_strategy: request.branch_strategy,
+        confirm_token: review.confirm_token,
+        checks,
+        blocks,
+        next_actions,
+    })
+}
+
+pub async fn apply_approved_patch(request: ApplyPatchRequest) -> Result<ApplyPatchResult, String> {
+    let readiness = prepare_apply_readiness(request.clone())?;
     if !request.allow_apply {
-        return Ok(blocked_result(
+        return Ok(blocked_readiness_result(
             &request.draft,
             "allowApply=false; aplicacion real bloqueada.",
-            review.blocks,
+            &readiness,
         ));
     }
-    if request.confirm_token.as_deref() != Some(review.confirm_token.as_str()) {
-        return Ok(blocked_result(
+    if !readiness.can_apply {
+        return Ok(blocked_readiness_result(
             &request.draft,
-            "Token de confirmacion invalido.",
-            review.blocks,
-        ));
-    }
-    if !review.approved {
-        return Ok(blocked_result(
-            &request.draft,
-            "Revision de patch no aprobada.",
-            review.blocks,
+            &readiness.summary,
+            &readiness,
         ));
     }
 
     let repo = canonical_repo(&request.draft.repo_path)?;
     let inspection = inspect_repository(&request.draft.repo_path)?;
-    if !inspection.is_git_repo || inspection.dirty {
-        return Ok(blocked_result(
-            &request.draft,
-            "Repo no Git o worktree sucio.",
-            inspection.blocks,
-        ));
-    }
-
     let branch = ensure_branch(&repo, &inspection.current_branch, &request)?;
     git_apply(&repo, &request.draft.unified_diff, true)?;
     git_apply(&repo, &request.draft.unified_diff, false)?;
+    let mut messages = Vec::new();
     messages.push("Patch aplicado con git apply.".to_string());
     messages.push(format!("Rama activa: {branch}."));
     let _ = record_decision(
@@ -209,9 +335,14 @@ pub async fn apply_approved_patch(request: ApplyPatchRequest) -> Result<ApplyPat
     })
 }
 
-fn blocked_result(draft: &PatchDraft, summary: &str, blocks: Vec<String>) -> ApplyPatchResult {
+fn blocked_readiness_result(
+    draft: &PatchDraft,
+    summary: &str,
+    readiness: &ApplyReadiness,
+) -> ApplyPatchResult {
     let mut messages = vec![summary.to_string()];
-    messages.extend(blocks);
+    messages.extend(readiness.blocks.clone());
+    messages.extend(readiness.next_actions.clone());
     ApplyPatchResult {
         draft_id: draft.id.clone(),
         status: "blocked".to_string(),
@@ -226,10 +357,18 @@ fn ensure_branch(
     current_branch: &str,
     request: &ApplyPatchRequest,
 ) -> Result<String, String> {
-    if request.branch_strategy != "create_safe_branch" {
-        return Ok(current_branch.to_string());
+    let branch = safe_branch_name(&request.draft.objective);
+    if request.branch_strategy == "reuse" {
+        if current_branch == branch {
+            return Ok(current_branch.to_string());
+        }
+        return Err(format!(
+            "Rama actual no es segura para apply controlado: usar {branch}."
+        ));
     }
-    let branch = format!("agent/{}", slug(&request.draft.objective));
+    if request.branch_strategy != "create_safe_branch" {
+        return Err("branchStrategy debe ser create_safe_branch o reuse.".to_string());
+    }
     if current_branch == branch {
         return Ok(branch);
     }
@@ -270,6 +409,14 @@ fn git_apply(repo: &std::path::Path, diff: &str, check_only: bool) -> Result<(),
     Err(format!("git apply fallo: {stderr}"))
 }
 
+fn push_status(checks: &mut Vec<ReviewCheck>, name: &str, status: &str, detail: &str) {
+    checks.push(ReviewCheck {
+        name: name.to_string(),
+        status: status.to_string(),
+        detail: detail.to_string(),
+    });
+}
+
 fn check(
     checks: &mut Vec<ReviewCheck>,
     blocks: &mut Vec<String>,
@@ -284,6 +431,32 @@ fn check(
     });
     if !ok {
         blocks.push(detail.to_string());
+    }
+}
+
+fn apply_next_actions(
+    status: &str,
+    confirm_token: &str,
+    target_branch: &str,
+    blocks: &[String],
+) -> Vec<String> {
+    match status {
+        "ready_to_apply" => vec![
+            format!("Aplicar con branchStrategy=create_safe_branch en {target_branch}."),
+            "Ejecutar el gate declarado inmediatamente despues del apply.".to_string(),
+            "Registrar decision humana y resultado del gate en el PR.".to_string(),
+        ],
+        "ready_for_confirmation" => vec![
+            format!("Confirmar manualmente con token {confirm_token}."),
+            format!("Aplicar solo en rama segura {target_branch}."),
+            "Mantener el PR en modo revisable hasta que el gate pase.".to_string(),
+        ],
+        _ => blocks
+            .iter()
+            .take(3)
+            .cloned()
+            .chain(["No aplicar cambios reales hasta resolver bloqueos.".to_string()])
+            .collect(),
     }
 }
 
@@ -398,6 +571,10 @@ fn confirm_token(draft_id: &str) -> String {
     format!("APPLY:{draft_id}")
 }
 
+fn safe_branch_name(objective: &str) -> String {
+    format!("agent/{}", slug(objective))
+}
+
 fn slug(input: &str) -> String {
     let mut slug = String::new();
     for ch in input.chars() {
@@ -498,6 +675,111 @@ mod tests {
         let _ = fs::remove_dir_all(repo);
     }
 
+    #[tokio::test]
+    async fn prepare_apply_readiness_requires_confirmation_without_writing() {
+        let repo = std::env::temp_dir().join(format!(
+            "oneepis-agent-apply-ready-test-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        fs::create_dir_all(&repo).expect("temp repo");
+        Command::new("git")
+            .arg("init")
+            .current_dir(&repo)
+            .output()
+            .expect("git init");
+        fs::write(
+            repo.join("package.json"),
+            r#"{"scripts":{"check":"echo ok"}}"#,
+        )
+        .expect("package");
+        commit_all(&repo);
+        let branch_before = current_branch(&repo);
+        let entries_before = fs::read_dir(&repo).expect("before").count();
+        let draft = draft_patch(
+            repo.to_str().expect("utf8 repo"),
+            "Preparar apply seguro",
+            Some("http://127.0.0.1:9".to_string()),
+            None,
+        )
+        .await
+        .expect("draft");
+
+        let readiness = prepare_apply_readiness(ApplyPatchRequest {
+            draft,
+            allow_apply: true,
+            confirm_token: None,
+            branch_strategy: "create_safe_branch".to_string(),
+            database_url: None,
+        })
+        .expect("readiness");
+
+        assert_eq!(readiness.status, "ready_for_confirmation");
+        assert!(!readiness.can_apply);
+        assert!(readiness.target_branch.starts_with("agent/"));
+        assert_eq!(current_branch(&repo), branch_before);
+        assert_eq!(fs::read_dir(&repo).expect("after").count(), entries_before);
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.name == "git-apply-check" && check.status == "passed"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.name == "human-confirmation" && check.status == "pending"));
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[tokio::test]
+    async fn prepare_apply_readiness_blocks_dirty_repo() {
+        let repo = std::env::temp_dir().join(format!(
+            "oneepis-agent-apply-dirty-test-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        fs::create_dir_all(&repo).expect("temp repo");
+        Command::new("git")
+            .arg("init")
+            .current_dir(&repo)
+            .output()
+            .expect("git init");
+        fs::write(
+            repo.join("package.json"),
+            r#"{"scripts":{"check":"echo ok"}}"#,
+        )
+        .expect("package");
+        commit_all(&repo);
+        let draft = draft_patch(
+            repo.to_str().expect("utf8 repo"),
+            "Preparar apply seguro",
+            Some("http://127.0.0.1:9".to_string()),
+            None,
+        )
+        .await
+        .expect("draft");
+        let token = review_patch(&draft).expect("review").confirm_token;
+        fs::write(repo.join("dirty.txt"), "cambio sin commit").expect("dirty");
+
+        let readiness = prepare_apply_readiness(ApplyPatchRequest {
+            draft,
+            allow_apply: true,
+            confirm_token: Some(token),
+            branch_strategy: "create_safe_branch".to_string(),
+            database_url: None,
+        })
+        .expect("readiness");
+
+        assert_eq!(readiness.status, "blocked");
+        assert!(!readiness.can_apply);
+        assert!(readiness
+            .blocks
+            .iter()
+            .any(|block| block.contains("Worktree debe estar limpio")));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.name == "git-apply-check" && check.status == "skipped"));
+        let _ = fs::remove_dir_all(repo);
+    }
+
     #[test]
     fn unsafe_patch_paths_are_rejected() {
         assert!(!is_safe_relative_path("../outside.rs"));
@@ -525,5 +807,15 @@ mod tests {
             .output()
             .expect("git commit");
         assert!(commit.status.success(), "git commit failed");
+    }
+
+    fn current_branch(repo: &std::path::Path) -> String {
+        let output = Command::new("git")
+            .arg("branch")
+            .arg("--show-current")
+            .current_dir(repo)
+            .output()
+            .expect("git branch");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
     }
 }

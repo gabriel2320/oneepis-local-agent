@@ -75,6 +75,21 @@ async fn run() -> Result<(), String> {
             let draft = required_draft_file(&args)?;
             print_json(&patch::review_patch(&draft)?)?;
         }
+        "prepare-apply" => {
+            let draft = required_draft_file(&args)?;
+            let confirm_token = option_value(&args, "--confirm-token").map(ToString::to_string);
+            let branch_strategy = option_value(&args, "--branch-strategy")
+                .unwrap_or("create_safe_branch")
+                .to_string();
+            let request = ApplyPatchRequest {
+                draft,
+                allow_apply: true,
+                confirm_token,
+                branch_strategy,
+                database_url: None,
+            };
+            print_json(&patch::prepare_apply_readiness(request)?)?;
+        }
         "apply" => {
             let draft = required_draft_file(&args)?;
             let confirm_token = option_value(&args, "--confirm-token").map(ToString::to_string);
@@ -180,7 +195,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent report <repo> [--objective texto] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent report <repo> [--objective texto] | agent ollama | agent stop"
             .to_string(),
     )
 }
