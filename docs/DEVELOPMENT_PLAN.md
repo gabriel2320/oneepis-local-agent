@@ -21,6 +21,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Review drafts with deterministic checks: risk, diff size, paths, gates, and blocked state.
 - List persisted runs from the optional `oneepis_agent` database.
 - Run declared package gates through typed commands only.
+- Record dry-run states for package, context pack, local brief, microplan, PatchDraft, safety, result, lessons, and stop condition.
 - Explain every state in natural Spanish: current action, reason, next action, and active governance guardrail.
 - Keep help text operational and tied to cycle state, not marketing copy.
 - Provide `DevelopmentReadiness` before planning: repo readiness, Ollama/model health, required gates, blockers, next actions, and suggested microcycles.

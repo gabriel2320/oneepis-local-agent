@@ -65,9 +65,10 @@ type MicroStep = {
 
 const initialMicroSteps: MicroStep[] = [
   { id: "inspect", label: "Inspeccion", status: "pending", detail: "Sin ejecutar." },
-  { id: "plan", label: "Plan", status: "pending", detail: "Sin ejecutar." },
+  { id: "package", label: "Paquete", status: "pending", detail: "Sin ejecutar." },
   { id: "context", label: "Contexto", status: "pending", detail: "Sin ejecutar." },
   { id: "brief", label: "Brief", status: "pending", detail: "Sin ejecutar." },
+  { id: "plan", label: "Plan", status: "pending", detail: "Sin ejecutar." },
   { id: "draft", label: "PatchDraft", status: "pending", detail: "Sin ejecutar." },
   { id: "run", label: "Dry-run", status: "pending", detail: "Sin ejecutar." },
   { id: "gate", label: "Gate", status: "pending", detail: "Sin ejecutar." },
@@ -240,10 +241,10 @@ function App() {
       setReadiness(ready);
       markMicroStep("inspect", repo.blocks.length > 0 ? "blocked" : "completed", repo.blocks[0] ?? `${repo.projectName} en ${repo.currentBranch}.`);
 
-      markMicroStep("plan", "running", "Generando microplan gobernado.");
-      const nextPlan = await planMicrocycle(repoPath, objective);
-      setPlan(nextPlan);
-      markMicroStep("plan", nextPlan.blocked ? "blocked" : "completed", `Modelo ${nextPlan.modelUsed}; gate ${nextPlan.recommendedGate}.`);
+      markMicroStep("package", "running", "Preparando paquete de trabajo.");
+      const nextPackage = await getDevelopmentWorkPackage(repoPath, objective);
+      setWorkPackage(nextPackage);
+      markMicroStep("package", nextPackage.status === "blocked" ? "blocked" : "completed", `${nextPackage.filesToInspect.length} rutas; gates ${nextPackage.gates.join(", ") || "sin_gate"}.`);
 
       markMicroStep("context", "running", "Preparando contexto local sanitizado.");
       const nextContext = await getDevelopmentContextPack(repoPath, objective);
@@ -254,6 +255,11 @@ function App() {
       const nextBrief = await getDevelopmentBrief(repoPath, objective, true);
       setBrief(nextBrief);
       markMicroStep("brief", nextBrief.status === "blocked" ? "blocked" : "completed", nextBrief.proposal?.summary ?? nextBrief.summary);
+
+      markMicroStep("plan", "running", "Generando microplan gobernado.");
+      const nextPlan = await planMicrocycle(repoPath, objective);
+      setPlan(nextPlan);
+      markMicroStep("plan", nextPlan.blocked ? "blocked" : "completed", `Modelo ${nextPlan.modelUsed}; gate ${nextPlan.recommendedGate}.`);
 
       markMicroStep("draft", "running", "Preparando PatchDraft revisable.");
       const nextDraft = await draftPatch(repoPath, objective);

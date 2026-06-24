@@ -160,4 +160,4 @@ Estado actual:
 - Gates declarados por `package.json`.
 - Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.
-- Runner dry-run con maquina de estados cerrada.
+- Runner dry-run con maquina de estados cerrada que registra paquete, contexto, brief, plan, PatchDraft, safety y parada.

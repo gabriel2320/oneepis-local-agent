@@ -1,15 +1,25 @@
+use crate::agent::brief::build_development_brief;
+use crate::agent::context_pack::build_development_context_pack;
 use crate::agent::governance::apply_oneepis_governance;
 use crate::agent::ollama::ask_for_micro_plan;
 use crate::agent::persistence::record_run;
 use crate::agent::repo::inspect_repository;
 use crate::agent::safety::{sanitize_log, sha256_hex};
-use crate::agent::types::{AgentRun, AgentStep, MicroPlan, RunRequest};
+use crate::agent::types::{
+    AgentRun, AgentStep, DevelopmentBrief, DevelopmentContextPack, DevelopmentWorkPackage,
+    MicroPlan, RunRequest,
+};
+use crate::agent::work_package::development_work_package;
 use chrono::Utc;
+use std::path::Path;
 
 const STATES: &[&str] = &[
     "preflight",
     "governance_read",
     "repo_audit",
+    "work_package",
+    "context_pack",
+    "development_brief",
     "micro_plan",
     "patch_draft",
     "safety_review",
@@ -45,9 +55,17 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
         || request.branch_strategy != "reuse";
     let started_at = Utc::now().to_rfc3339();
     let inspection = inspect_repository(&request.repo_path)?;
+    let package = development_work_package(&request.repo_path, &request.objective, None).await?;
+    let context = build_development_context_pack(Path::new(&inspection.repo_path), &package);
+    let brief = build_development_brief(&package, &context, None);
     let plan = plan_microcycle(&request.repo_path, &request.objective, None).await?;
-    let blocked =
-        plan.blocked || !inspection.blocks.is_empty() || mode != "dry_run" || apply_requested;
+    let blocked = plan.blocked
+        || package.status == "blocked"
+        || context.status == "blocked"
+        || brief.status == "blocked"
+        || !inspection.blocks.is_empty()
+        || mode != "dry_run"
+        || apply_requested;
     let mut steps = Vec::new();
 
     for (index, state) in STATES.iter().enumerate() {
@@ -56,7 +74,16 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
             order: index + 1,
             state: state.to_string(),
             status: status.to_string(),
-            summary: state_summary(state, &inspection, &plan, max_cycles, &mode),
+            summary: state_summary(
+                state,
+                &inspection,
+                &package,
+                &context,
+                &brief,
+                &plan,
+                max_cycles,
+                &mode,
+            ),
         });
         if blocked && *state == "safety_review" {
             break;
@@ -73,6 +100,10 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
             "OneEpis requiere microciclos pequenos y gates oficiales antes de crecer.".to_string(),
         );
     }
+    lessons.push(format!(
+        "Paquete={}, contexto={}, brief={}.",
+        package.status, context.status, brief.status
+    ));
     if max_cycles > 1 {
         lessons.push(format!(
             "Se pidieron {max_cycles} ciclos, pero v0.1 registra solo una pasada segura."
@@ -152,6 +183,18 @@ fn normalize_plan(plan: &mut MicroPlan, inspection: &crate::agent::types::RepoIn
     if inspection.is_one_epis {
         apply_oneepis_governance(plan, inspection);
     }
+    if let Some(preferred_gate) =
+        preferred_gate_for_objective(&plan.objective, &inspection.declared_gates)
+    {
+        plan.recommended_gate = preferred_gate.clone();
+        if !plan
+            .required_gates
+            .iter()
+            .any(|gate| gate == &preferred_gate)
+        {
+            plan.required_gates.push(preferred_gate);
+        }
+    }
     if plan.recommended_gate.is_empty()
         || !inspection.declared_gates.contains(&plan.recommended_gate)
     {
@@ -207,6 +250,40 @@ fn select_gate(gates: &[String]) -> String {
         .unwrap_or_else(|| "sin_gate".to_string())
 }
 
+fn preferred_gate_for_objective(objective: &str, gates: &[String]) -> Option<String> {
+    let objective = objective.to_ascii_lowercase();
+    let has_gate = |gate: &str| gates.iter().any(|known| known == gate);
+    if has_gate("check:size")
+        && ["size", "tamano", "near-limit", "archivo"]
+            .iter()
+            .any(|needle| objective.contains(needle))
+    {
+        return Some("check:size".to_string());
+    }
+    if has_gate("check:contract")
+        && ["contrato", "openapi"]
+            .iter()
+            .any(|needle| objective.contains(needle))
+    {
+        return Some("check:contract".to_string());
+    }
+    if has_gate("check:web")
+        && ["web", "pantalla", "ruta", "screen"]
+            .iter()
+            .any(|needle| objective.contains(needle))
+    {
+        return Some("check:web".to_string());
+    }
+    if has_gate("check:api")
+        && ["api", "endpoint", "postgres"]
+            .iter()
+            .any(|needle| objective.contains(needle))
+    {
+        return Some("check:api".to_string());
+    }
+    None
+}
+
 fn state_status(state: &str, blocked: bool, mode: &str) -> &'static str {
     if blocked && state == "safety_review" {
         return "blocked";
@@ -228,6 +305,9 @@ fn state_status(state: &str, blocked: bool, mode: &str) -> &'static str {
 fn state_summary(
     state: &str,
     inspection: &crate::agent::types::RepoInspection,
+    package: &DevelopmentWorkPackage,
+    context: &DevelopmentContextPack,
+    brief: &DevelopmentBrief,
     plan: &MicroPlan,
     max_cycles: u8,
     mode: &str,
@@ -252,7 +332,33 @@ fn state_summary(
                 "Worktree limpio para planificar.".to_string()
             }
         }
-        "micro_plan" => format!("Plan generado con modelo {}.", plan.model_used),
+        "work_package" => format!(
+            "Paquete {} con {} archivo(s) a inspeccionar y gates: {}.",
+            package.status,
+            package.files_to_inspect.len(),
+            join_or_empty(&package.gates)
+        ),
+        "context_pack" => format!(
+            "Contexto {} con {} entrada(s), {}/{} bytes y {} warning(s).",
+            context.status,
+            context.files.len(),
+            context.total_bytes,
+            context.max_bytes,
+            context.warnings.len()
+        ),
+        "development_brief" => format!(
+            "Brief {} para modelo local; propuesta: {}.",
+            brief.status,
+            brief
+                .proposal
+                .as_ref()
+                .map(|proposal| proposal.status.as_str())
+                .unwrap_or("no solicitada")
+        ),
+        "micro_plan" => format!(
+            "Plan generado con modelo {}; gate recomendado {}.",
+            plan.model_used, plan.recommended_gate
+        ),
         "patch_draft" => {
             "v0.2 genera PatchDraft revisable sin escribir en el repo objetivo.".to_string()
         }
@@ -280,4 +386,66 @@ fn state_summary(
 fn run_id(repo_path: &str, objective: &str, started_at: &str) -> String {
     let digest = sha256_hex(format!("{repo_path}:{objective}:{started_at}").as_bytes());
     format!("run-{}", &digest[..16])
+}
+
+fn join_or_empty(items: &[String]) -> String {
+    if items.is_empty() {
+        "sin_gate".to_string()
+    } else {
+        items.join(", ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runner_states_include_context_and_brief_before_patch() {
+        let work_index = STATES
+            .iter()
+            .position(|state| *state == "work_package")
+            .expect("work package state");
+        let context_index = STATES
+            .iter()
+            .position(|state| *state == "context_pack")
+            .expect("context state");
+        let brief_index = STATES
+            .iter()
+            .position(|state| *state == "development_brief")
+            .expect("brief state");
+        let patch_index = STATES
+            .iter()
+            .position(|state| *state == "patch_draft")
+            .expect("patch state");
+
+        assert!(work_index < context_index);
+        assert!(context_index < brief_index);
+        assert!(brief_index < patch_index);
+    }
+
+    #[test]
+    fn blocked_runner_still_reaches_safety_review() {
+        assert_eq!(state_status("context_pack", true, "dry_run"), "completed");
+        assert_eq!(
+            state_status("development_brief", true, "dry_run"),
+            "completed"
+        );
+        assert_eq!(state_status("safety_review", true, "dry_run"), "blocked");
+        assert_eq!(state_status("gate_run", true, "dry_run"), "skipped");
+    }
+
+    #[test]
+    fn size_objectives_prefer_size_gate() {
+        let gates = vec![
+            "check:api".to_string(),
+            "check:size".to_string(),
+            "check:web".to_string(),
+        ];
+
+        assert_eq!(
+            preferred_gate_for_objective("Reducir archivo clinico near-limit", &gates),
+            Some("check:size".to_string())
+        );
+    }
 }
