@@ -27,8 +27,10 @@ import {
   getImplementationDecision,
   getOllamaStatus,
   inspectRepository,
+  isBrowserPreview,
   listRuns,
   planMicrocycle,
+  previewNotice,
   prepareApplyReadiness,
   reviewPatch,
   runGate,
@@ -58,11 +60,14 @@ import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import { buildAgentNarrative, explainStatus } from "./lib/narrative";
 import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
+import { plainText } from "./lib/plain-language";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
 const tabs = ["repo", "preparacion", "evolucion", "paquete", "contexto", "brief", "decision", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
+const primaryTabs: Tab[] = ["repo", "preparacion", "evolucion", "microproceso", "patch", "gates", "bitacora"];
+const technicalTabs: Tab[] = ["paquete", "contexto", "brief", "decision", "plan", "reporte"];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
   id: string;
@@ -72,21 +77,22 @@ type MicroStep = {
 };
 
 const initialMicroSteps: MicroStep[] = [
-  { id: "inspect", label: "Inspeccion", status: "pending", detail: "Sin ejecutar." },
-  { id: "evolution", label: "Evolucion", status: "pending", detail: "Sin ejecutar." },
-  { id: "package", label: "Paquete", status: "pending", detail: "Sin ejecutar." },
+  { id: "inspect", label: "Revisión", status: "pending", detail: "Sin ejecutar." },
+  { id: "evolution", label: "Próximo paso", status: "pending", detail: "Sin ejecutar." },
+  { id: "package", label: "Preparación", status: "pending", detail: "Sin ejecutar." },
   { id: "context", label: "Contexto", status: "pending", detail: "Sin ejecutar." },
-  { id: "brief", label: "Brief", status: "pending", detail: "Sin ejecutar." },
-  { id: "decision", label: "Decision", status: "pending", detail: "Sin ejecutar." },
+  { id: "brief", label: "Instrucciones", status: "pending", detail: "Sin ejecutar." },
+  { id: "decision", label: "Decisión", status: "pending", detail: "Sin ejecutar." },
   { id: "plan", label: "Plan", status: "pending", detail: "Sin ejecutar." },
-  { id: "draft", label: "PatchDraft", status: "pending", detail: "Sin ejecutar." },
-  { id: "run", label: "Dry-run", status: "pending", detail: "Sin ejecutar." },
-  { id: "gate", label: "Gate", status: "pending", detail: "Sin ejecutar." },
+  { id: "draft", label: "Borrador", status: "pending", detail: "Sin ejecutar." },
+  { id: "run", label: "Ensayo", status: "pending", detail: "Sin ejecutar." },
+  { id: "gate", label: "Prueba", status: "pending", detail: "Sin ejecutar." },
 ];
 
 function App() {
+  const previewMode = isBrowserPreview();
   const [repoPath, setRepoPath] = useState(defaultRepo);
-  const [objective, setObjective] = useState("Auditar el repo y proponer el microciclo mas pequeno gobernado.");
+  const [objective, setObjective] = useState("Revisar el proyecto y proponer el paso pequeño más seguro.");
   const [activeTab, setActiveTab] = useState<Tab>("repo");
   const [inspection, setInspection] = useState<RepoInspection | null>(null);
   const [ollama, setOllama] = useState<OllamaStatus | null>(null);
@@ -281,7 +287,7 @@ function App() {
 
   async function prepareApply() {
     if (!draft) {
-      setError("No hay PatchDraft para prevalidar.");
+      setError("No hay borrador para revisar antes de aplicar cambios.");
       return;
     }
     setBusy("applyReadiness");
@@ -303,7 +309,7 @@ function App() {
     setActiveTab("microproceso");
     setMicroSteps(initialMicroSteps);
     try {
-      markMicroStep("inspect", "running", "Leyendo repo, modelos y bitacora.");
+      markMicroStep("inspect", "running", "Revisando proyecto, modelo local e historial.");
       const [repo, ai, history, ready] = await Promise.all([
         inspectRepository(repoPath),
         getOllamaStatus(),
@@ -325,22 +331,22 @@ function App() {
         nextEvolution.selectedCandidate?.title ?? nextEvolution.summary,
       );
 
-      markMicroStep("package", "running", "Preparando paquete de trabajo.");
+      markMicroStep("package", "running", "Preparando el trabajo pequeño.");
       const nextPackage = await getDevelopmentWorkPackage(repoPath, objective);
       setWorkPackage(nextPackage);
-      markMicroStep("package", nextPackage.status === "blocked" ? "blocked" : "completed", `${nextPackage.filesToInspect.length} rutas; gates ${nextPackage.gates.join(", ") || "sin_gate"}.`);
+      markMicroStep("package", nextPackage.status === "blocked" ? "blocked" : "completed", `${nextPackage.filesToInspect.length} rutas; pruebas ${nextPackage.gates.join(", ") || "sin prueba"}.`);
 
-      markMicroStep("context", "running", "Preparando contexto local sanitizado.");
+      markMicroStep("context", "running", "Preparando contexto local seguro.");
       const nextContext = await getDevelopmentContextPack(repoPath, objective);
       setContextPack(nextContext);
       markMicroStep("context", nextContext.status === "blocked" ? "blocked" : "completed", `${nextContext.files.length} entradas; ${nextContext.totalBytes}/${nextContext.maxBytes} bytes.`);
 
-      markMicroStep("brief", "running", "Preparando brief para modelo local.");
+      markMicroStep("brief", "running", "Preparando instrucciones para el modelo local.");
       const nextBrief = await getDevelopmentBrief(repoPath, objective, true);
       setBrief(nextBrief);
       markMicroStep("brief", nextBrief.status === "blocked" ? "blocked" : "completed", nextBrief.proposal?.summary ?? nextBrief.summary);
 
-      markMicroStep("decision", "running", "Cerrando propuesta local como decision revisable.");
+      markMicroStep("decision", "running", "Convirtiendo la propuesta en una decisión revisable.");
       const nextDecision = await getImplementationDecision(repoPath, objective, true);
       setDecision(nextDecision);
       markMicroStep(
@@ -349,19 +355,19 @@ function App() {
         nextDecision.blockers[0] ?? nextDecision.summary,
       );
 
-      markMicroStep("plan", "running", "Generando microplan gobernado.");
+      markMicroStep("plan", "running", "Generando plan pequeño según reglas de OneEpis.");
       const nextPlan = await planMicrocycle(repoPath, objective);
       setPlan(nextPlan);
-      markMicroStep("plan", nextPlan.blocked ? "blocked" : "completed", `Modelo ${nextPlan.modelUsed}; gate ${nextPlan.recommendedGate}.`);
+      markMicroStep("plan", nextPlan.blocked ? "blocked" : "completed", `Modelo ${nextPlan.modelUsed}; prueba ${nextPlan.recommendedGate}.`);
 
-      markMicroStep("draft", "running", "Preparando PatchDraft revisable.");
+      markMicroStep("draft", "running", "Preparando borrador revisable.");
       const nextDraft = await draftPatch(repoPath, objective);
       const nextReview = await reviewPatch(nextDraft);
       setDraft(nextDraft);
       setReview(nextReview);
       markMicroStep("draft", nextReview.approved ? "completed" : "blocked", nextReview.blocks[0] ?? nextDraft.summary);
 
-      markMicroStep("run", "running", "Ejecutando dry-run sin escritura.");
+      markMicroStep("run", "running", "Ejecutando ensayo sin cambios.");
       const nextRun = await runMicrocycle(repoPath, objective, 1);
       setRun(nextRun);
       setPlan(nextRun.plan);
@@ -369,12 +375,12 @@ function App() {
 
       const selectedGate = selectSmallGate(repo.declaredGates, nextRun.plan.recommendedGate);
       if (selectedGate) {
-        markMicroStep("gate", "running", `Ejecutando ${selectedGate}.`);
+        markMicroStep("gate", "running", `Ejecutando prueba ${selectedGate}.`);
         const nextGate = await runGate(repoPath, selectedGate);
         setGateResult(nextGate);
         markMicroStep("gate", gateStatus(nextGate.status), nextGate.summary);
       } else {
-        markMicroStep("gate", "blocked", "Sin gate declarado.");
+        markMicroStep("gate", "blocked", "Sin prueba declarada.");
       }
       setRuns(await listRuns(20));
     } catch (err) {
@@ -400,7 +406,7 @@ function App() {
 
   async function runSelectedGate() {
     if (!primaryGate) {
-      setError("No hay gate declarado para ejecutar.");
+      setError("No hay una prueba declarada para ejecutar.");
       return;
     }
     setBusy("gate");
@@ -433,15 +439,15 @@ function App() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge tone={ollama?.available ? "success" : "warning"}>{ollama?.available ? "Ollama activo" : "Ollama pendiente"}</Badge>
-              <Badge tone={repoTone}>{inspection?.isOneEpis ? "OneEpis" : "Repo generico"}</Badge>
+              <Badge tone={repoTone}>{inspection?.isOneEpis ? "OneEpis" : "Proyecto genérico"}</Badge>
               <Badge tone={plan?.riskLevel === "red" ? "danger" : plan?.riskLevel === "yellow" ? "warning" : "neutral"}>
                 Riesgo {plan?.riskLevel ?? "sin plan"}
               </Badge>
-              <Badge tone={readinessTone(readiness?.status)}>{readiness ? `Preparacion ${readinessLabel(readiness.status)}` : "Preparacion pendiente"}</Badge>
+              <Badge tone={readinessTone(readiness?.status)}>{readiness ? `Estado ${readinessLabel(readiness.status)}` : "Estado pendiente"}</Badge>
             </div>
           </div>
           <nav className="flex flex-wrap gap-2">
-            {tabs.map((tab) => (
+            {primaryTabs.map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -454,28 +460,49 @@ function App() {
                 {tabLabel(tab)}
               </button>
             ))}
+            <details className="group min-w-0">
+              <summary className="flex h-9 cursor-pointer list-none items-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted">
+                Detalles técnicos
+              </summary>
+              <div className="mt-2 flex max-w-full flex-wrap gap-2 rounded-md border border-border bg-background p-2">
+                {technicalTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className={cn(
+                      "h-9 rounded-md border px-3 text-sm font-medium transition",
+                      activeTab === tab ? "border-primary bg-primary text-primary-foreground" : "border-border bg-surface text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {tabLabel(tab)}
+                  </button>
+                ))}
+              </div>
+            </details>
           </nav>
         </header>
 
+        {previewMode && (
+          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning break-words">
+            {previewNotice()} Esta pantalla sirve para revisar la interfaz; las revisiones reales funcionan dentro de la app de escritorio.
+          </div>
+        )}
+
         {error && (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger break-words">{error}</div>
+          <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger break-words">{plainText(error)}</div>
         )}
 
         <AgentNarrativePanel narrative={narrative} />
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
           <Card
-            title="Objetivo"
-            description="El agente trabaja en ciclos cerrados: inspecciona, planifica, propone diff, revisa safety, ejecuta gate y se detiene."
-            actions={
-              <Button variant="secondary" onClick={loadAll} disabled={busy !== null}>
-                {busy === "inspect" ? "Inspeccionando..." : "Inspeccionar"}
-              </Button>
-            }
+            title="Qué quieres mejorar"
+            description="El agente revisa el proyecto, elige un paso pequeño, prepara un borrador y ejecuta una prueba. No aplica cambios sin confirmación."
           >
             <div className="grid gap-3">
               <label className="grid gap-1 text-sm">
-                <span className="text-xs font-medium text-muted-foreground">Repo</span>
+                <span className="text-xs font-medium text-muted-foreground">Proyecto</span>
                 <input
                   value={repoPath}
                   onChange={(event) => setRepoPath(event.target.value)}
@@ -483,7 +510,7 @@ function App() {
                 />
               </label>
               <label className="grid gap-1 text-sm">
-                <span className="text-xs font-medium text-muted-foreground">Microciclo</span>
+                <span className="text-xs font-medium text-muted-foreground">Paso que quieres intentar</span>
                 <textarea
                   value={objective}
                   onChange={(event) => setObjective(event.target.value)}
@@ -491,57 +518,66 @@ function App() {
                   className="min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                 />
               </label>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={createPlan} disabled={busy !== null}>
-                  <BrainCircuit className="mr-2 h-4 w-4" />
-                  {busy === "plan" ? "Planificando..." : "Plan"}
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <Button onClick={loadAll} disabled={busy !== null}>
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  {busy === "inspect" ? "Revisando..." : "Revisar proyecto"}
                 </Button>
                 <Button variant="secondary" onClick={createEvolutionPlan} disabled={busy !== null}>
                   <Activity className="mr-2 h-4 w-4" />
-                  {busy === "evolution" ? "Evolucion..." : "Evolucion"}
+                  {busy === "evolution" ? "Eligiendo..." : "Elegir próximo paso"}
                 </Button>
                 <Button variant="secondary" onClick={createDraft} disabled={busy !== null}>
                   <FileText className="mr-2 h-4 w-4" />
-                  {busy === "draft" ? "Generando..." : "PatchDraft"}
-                </Button>
-                <Button variant="secondary" onClick={createWorkPackage} disabled={busy !== null}>
-                  <ClipboardList className="mr-2 h-4 w-4" />
-                  {busy === "workPackage" ? "Paquete..." : "Paquete"}
-                </Button>
-                <Button variant="secondary" onClick={createContextPack} disabled={busy !== null}>
-                  <BookOpenCheck className="mr-2 h-4 w-4" />
-                  {busy === "contextPack" ? "Contexto..." : "Contexto"}
-                </Button>
-                <Button variant="secondary" onClick={createBrief} disabled={busy !== null}>
-                  <Bot className="mr-2 h-4 w-4" />
-                  {busy === "brief" ? "Brief..." : "Brief IA"}
-                </Button>
-                <Button variant="secondary" onClick={createDecision} disabled={busy !== null}>
-                  <ListChecks className="mr-2 h-4 w-4" />
-                  {busy === "decision" ? "Decidiendo..." : "Decision"}
-                </Button>
-                <Button variant="secondary" onClick={runDryCycle} disabled={busy !== null}>
-                  <Play className="mr-2 h-4 w-4" />
-                  {busy === "run" ? "Ejecutando..." : "Dry-run"}
-                </Button>
-                <Button variant="secondary" onClick={createReport} disabled={busy !== null}>
-                  <ClipboardList className="mr-2 h-4 w-4" />
-                  {busy === "report" ? "Reporte..." : "Reporte PR"}
-                </Button>
-                <Button variant="secondary" onClick={runMicroProcess} disabled={busy !== null}>
-                  <CircleDashed className="mr-2 h-4 w-4" />
-                  {busy === "microprocess" ? "Micro..." : "Microproceso"}
+                  {busy === "draft" ? "Creando..." : "Crear borrador"}
                 </Button>
                 <Button variant="secondary" onClick={runSelectedGate} disabled={busy !== null || !primaryGate}>
                   <Terminal className="mr-2 h-4 w-4" />
-                  {busy === "gate" ? "Gate..." : primaryGate || "Sin gate"}
+                  {busy === "gate" ? "Probando..." : primaryGate ? "Ejecutar prueba" : "Sin prueba"}
                 </Button>
               </div>
+              <details className="rounded-md border border-border bg-background p-3">
+                <summary className="cursor-pointer text-sm font-medium text-muted-foreground">Acciones avanzadas</summary>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="secondary" onClick={createPlan} disabled={busy !== null}>
+                    <BrainCircuit className="mr-2 h-4 w-4" />
+                    {busy === "plan" ? "Planificando..." : "Plan técnico"}
+                  </Button>
+                  <Button variant="secondary" onClick={createWorkPackage} disabled={busy !== null}>
+                    <ClipboardList className="mr-2 h-4 w-4" />
+                    {busy === "workPackage" ? "Preparando..." : "Paquete técnico"}
+                  </Button>
+                  <Button variant="secondary" onClick={createContextPack} disabled={busy !== null}>
+                    <BookOpenCheck className="mr-2 h-4 w-4" />
+                    {busy === "contextPack" ? "Leyendo..." : "Contexto"}
+                  </Button>
+                  <Button variant="secondary" onClick={createBrief} disabled={busy !== null}>
+                    <Bot className="mr-2 h-4 w-4" />
+                    {busy === "brief" ? "Preparando..." : "Instrucciones IA"}
+                  </Button>
+                  <Button variant="secondary" onClick={createDecision} disabled={busy !== null}>
+                    <ListChecks className="mr-2 h-4 w-4" />
+                    {busy === "decision" ? "Decidiendo..." : "Decisión técnica"}
+                  </Button>
+                  <Button variant="secondary" onClick={runDryCycle} disabled={busy !== null}>
+                    <Play className="mr-2 h-4 w-4" />
+                    {busy === "run" ? "Ensayando..." : "Ensayo sin cambios"}
+                  </Button>
+                  <Button variant="secondary" onClick={createReport} disabled={busy !== null}>
+                    <ClipboardList className="mr-2 h-4 w-4" />
+                    {busy === "report" ? "Creando..." : "Reporte técnico"}
+                  </Button>
+                  <Button variant="secondary" onClick={runMicroProcess} disabled={busy !== null}>
+                    <CircleDashed className="mr-2 h-4 w-4" />
+                    {busy === "microprocess" ? "Corriendo..." : "Proceso completo"}
+                  </Button>
+                </div>
+              </details>
             </div>
           </Card>
 
-          <Card title="Bloqueos" description="Si aparece algo aqui, el agente no avanza a escritura real hasta resolverlo.">
-            {blockers.length > 0 ? <List items={blockers} tone="warning" /> : <Empty text="Sin bloqueos activos." />}
+          <Card title="Qué impide avanzar" description="Si aparece algo aquí, primero hay que resolverlo antes de aplicar cambios.">
+            {blockers.length > 0 ? <List items={blockers} tone="warning" /> : <Empty text="No hay bloqueos activos." />}
           </Card>
         </section>
 
@@ -575,8 +611,8 @@ function AgentNarrativePanel({ narrative }: { narrative: AgentNarrative }) {
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
       <Card
-        title="Lenguaje natural"
-        description="Traduccion operativa del estado actual del agente."
+        title="Qué está pasando"
+        description="Resumen claro del estado actual."
         className={tonePanel(narrative.tone)}
       >
         <div className="grid gap-3">
@@ -585,20 +621,20 @@ function AgentNarrativePanel({ narrative }: { narrative: AgentNarrative }) {
               <Info className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <h2 className="text-base font-semibold leading-6 break-words">{narrative.headline}</h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground break-words">{narrative.body}</p>
+              <h2 className="text-base font-semibold leading-6 break-words">{plainText(narrative.headline)}</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground break-words">{plainText(narrative.body)}</p>
             </div>
           </div>
           <div className="grid gap-2 md:grid-cols-2">
-            <HelpText label="Siguiente accion" value={narrative.nextAction} />
-            <HelpText label="Limite de gobernanza" value={narrative.guardrail} />
+            <HelpText label="Qué hago ahora" value={narrative.nextAction} />
+            <HelpText label="Regla activa" value={narrative.guardrail} />
           </div>
         </div>
       </Card>
 
-      <Card title="Autonomia gobernada" description="Poder local, con barandas de OneEpis.">
+      <Card title="Qué puede hacer" description="Acciones permitidas por las reglas de OneEpis.">
         <div className="grid gap-3">
-          <HelpText label="Puede hacer ahora" value={narrative.power} />
+          <HelpText label="Qué puede hacer ahora" value={narrative.power} />
           <List items={narrative.checklist.slice(0, 5)} empty="Sin pasos todavia." />
         </div>
       </Card>
@@ -611,9 +647,9 @@ function HelpText({ label, value }: { label: string; value: string }) {
     <div className="min-w-0 rounded border border-border bg-background px-3 py-2">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <HelpCircle className="h-3.5 w-3.5 shrink-0" />
-        {label}
+        {plainText(label)}
       </div>
-      <p className="mt-1 text-sm leading-5 break-words">{value}</p>
+      <p className="mt-1 text-sm leading-5 break-words">{plainText(value)}</p>
     </div>
   );
 }
@@ -629,7 +665,7 @@ function MicroProcessTab({
 }) {
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Microproceso">
+      <Card title="Ensayo sin cambios">
         <div className="grid gap-2">
           {steps.map((step) => (
             <div key={step.id} className="grid grid-cols-[minmax(0,120px)_minmax(88px,104px)_minmax(0,1fr)] items-start gap-3 rounded border border-border px-3 py-2 text-sm">
@@ -665,11 +701,11 @@ function MicroProcessTab({
 
 function ReportTab({ report }: { report: AgentRunReport | null }) {
   if (!report) {
-    return <Empty text="Sin reporte. Presiona Reporte PR para ejecutar dry-run y preparar Markdown revisable." />;
+    return <Empty text="Sin reporte. Presiona Reporte técnico para ejecutar un ensayo sin cambios y preparar un resumen revisable." />;
   }
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Reporte PR" description="Markdown de microproceso cerrado para revision humana.">
+      <Card title="Reporte técnico" description="Resumen del proceso corto para revisión humana.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={report.verdict === "ready_for_review" ? "success" : "warning"}>{report.verdict}</Badge>
           <Badge>{report.status}</Badge>
@@ -683,12 +719,12 @@ function ReportTab({ report }: { report: AgentRunReport | null }) {
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Checklist" description="Condiciones que el reporte deja visibles.">
-          <List items={report.checklist} empty="Sin checklist." />
+        <Card title="Lista de revisión" description="Condiciones que quedan visibles.">
+          <List items={report.checklist} empty="Sin lista de revisión." />
         </Card>
         <Card title="Siguientes Pasos" description="Accion concreta antes de cambiar codigo.">
           <List items={report.nextActions} empty="Sin acciones pendientes." />
-          <List items={report.warnings} tone="warning" empty="Sin warnings." />
+          <List items={report.warnings} tone="warning" empty="Sin avisos." />
         </Card>
       </div>
     </section>
@@ -699,24 +735,24 @@ function RepoTab({ inspection, ollama }: { inspection: RepoInspection | null; ol
   const isMissingModel = (value?: string) => (value ? ollama?.missingPolicyModels.includes(value) : false);
   return (
     <section className="grid gap-4 lg:grid-cols-3">
-      <Card title="Gobernanza" description="Reglas detectadas antes de planificar.">
-        <PanelIcon icon={<ShieldCheck className="h-4 w-4" />} label={inspection?.projectName ?? "Sin repo"} />
+      <Card title="Reglas de OneEpis" description="Qué revisé antes de proponer trabajo.">
+        <PanelIcon icon={<ShieldCheck className="h-4 w-4" />} label={inspection?.projectName ?? "Sin proyecto"} />
         <List items={inspection?.detectedRules ?? []} empty="Sin reglas detectadas." />
       </Card>
 
-      <Card title="Git" description="Estado de rama y limpieza del worktree objetivo.">
+      <Card title="Cambios pendientes" description="Qué significa: si hay cambios sin guardar, no se aplican cambios nuevos.">
         <PanelIcon icon={<GitBranch className="h-4 w-4" />} label={inspection?.currentBranch || "Sin rama"} />
         <pre className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
           {inspection?.statusText || "Sin estado Git."}
         </pre>
       </Card>
 
-      <Card title="Ollama" description="Modelos locales usados para planificar y revisar.">
+      <Card title="Modelo local" description="Ollama es el motor de IA que corre en este computador.">
         <div className="grid gap-2 text-sm sm:grid-cols-2">
-          <ModelSlot label="Gobernanza" value={ollama?.policy.governance} missing={isMissingModel(ollama?.policy.governance)} />
-          <ModelSlot label="Codigo" value={ollama?.policy.primaryCode} missing={isMissingModel(ollama?.policy.primaryCode)} />
-          <ModelSlot label="Rapido" value={ollama?.policy.fastCode} missing={isMissingModel(ollama?.policy.fastCode)} />
-          <ModelSlot label="Fallback" value={ollama?.policy.fallback} missing={isMissingModel(ollama?.policy.fallback)} />
+          <ModelSlot label="Reglas" value={ollama?.policy.governance} missing={isMissingModel(ollama?.policy.governance)} />
+          <ModelSlot label="Código" value={ollama?.policy.primaryCode} missing={isMissingModel(ollama?.policy.primaryCode)} />
+          <ModelSlot label="Rápido" value={ollama?.policy.fastCode} missing={isMissingModel(ollama?.policy.fastCode)} />
+          <ModelSlot label="Respaldo" value={ollama?.policy.fallback} missing={isMissingModel(ollama?.policy.fallback)} />
         </div>
         <p className="mt-3 text-xs text-muted-foreground break-words">{ollama?.models.length ?? 0} modelos en {ollama?.baseUrl ?? "Ollama"}</p>
       </Card>
@@ -728,11 +764,11 @@ function ReadinessTab({ readiness }: { readiness: DevelopmentReadiness | null })
   if (!readiness) return <Empty text="Sin diagnostico de preparacion. Ejecuta Inspeccionar." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Preparacion OneEpis" description="Diagnostico para programacion asistida con modelos locales.">
+      <Card title="Estado de OneEpis" description="Qué revisé: proyecto, cambios pendientes, reglas, modelo local y pruebas disponibles.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={readinessTone(readiness.status)}>{readinessLabel(readiness.status)}</Badge>
           <Badge>{readiness.profile}</Badge>
-          <Badge>{readiness.requiredGates.length} gates utiles</Badge>
+          <Badge>{readiness.requiredGates.length} pruebas útiles</Badge>
         </div>
         <p className="mt-3 text-sm leading-6 break-words">{readiness.summary}</p>
         <HelpText label="Modelos locales" value={readiness.localModelSummary} />
@@ -751,12 +787,12 @@ function ReadinessTab({ readiness }: { readiness: DevelopmentReadiness | null })
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Siguiente Accion" description="Orden sugerido para cerrar el ciclo.">
+        <Card title="Qué hago ahora" description="Acción concreta antes de avanzar.">
           <List items={readiness.nextActions} empty="Sin acciones pendientes." />
           <List items={readiness.blockers} tone="warning" />
           <List items={readiness.warnings} tone="warning" />
         </Card>
-        <Card title="Microciclos Sugeridos" description="Planes pequenos alineados con OneEpis.">
+        <Card title="Pasos sugeridos" description="Opciones pequeñas alineadas con OneEpis.">
           <div className="grid gap-3">
             {readiness.suggestedMicrocycles.map((item) => (
               <div key={item.title} className="min-w-0 rounded border border-border bg-background px-3 py-2">
@@ -779,11 +815,11 @@ function ReadinessTab({ readiness }: { readiness: DevelopmentReadiness | null })
 }
 
 function EvolutionTab({ evolution }: { evolution: EvolutionPlan | null }) {
-  if (!evolution) return <Empty text="Sin evolucion supervisada. Presiona Evolucion para elegir el proximo microproceso puntuado." />;
+  if (!evolution) return <Empty text="Sin proximo paso. Presiona Elegir proximo paso para ver una opcion pequena, segura y explicada." />;
   const selected = evolution.selectedCandidate;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Evolucion Supervisada" description="Elige un microproceso local, pequeno y verificable antes de PatchDraft.">
+      <Card title="Proximo paso" description="El agente elige una mejora pequena, local y comprobable antes de preparar un borrador.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={evolutionTone(evolution.status)}>{evolutionStatusLabel(evolution.status)}</Badge>
           <Badge>{evolution.rankedCandidates.length} candidatos</Badge>
@@ -807,30 +843,30 @@ function EvolutionTab({ evolution }: { evolution: EvolutionPlan | null }) {
                 <List items={selected.filesToInspect} empty="Sin archivos sugeridos." />
               </div>
               <div className="min-w-0">
-                <h4 className="text-sm font-semibold">Gates</h4>
-                <List items={selected.gates} empty="Sin gates disponibles." />
+                <h4 className="text-sm font-semibold">Pruebas</h4>
+                <List items={selected.gates} empty="Sin pruebas disponibles." />
               </div>
             </div>
           </div>
         ) : (
-          <Empty text="No hay candidato ejecutable. Revisa bloqueos, warnings o gates faltantes." />
+          <Empty text="No hay una opcion segura para ejecutar. Revisa bloqueos, avisos o pruebas faltantes." />
         )}
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Bloqueos Y Siguientes Pasos" description="Acciones concretas antes de avanzar.">
+        <Card title="Que falta resolver" description="Acciones concretas antes de avanzar.">
           <List items={evolution.blockers} tone="warning" empty="Sin bloqueos duros." />
-          <List items={evolution.warnings} tone="warning" empty="Sin warnings." />
+          <List items={evolution.warnings} tone="warning" empty="Sin avisos." />
           <List items={evolution.nextActions} empty="Sin acciones siguientes." />
         </Card>
-        <Card title="Ranking" description="Puntaje neto y veredicto de cada candidato.">
+        <Card title="Opciones evaluadas" description="Puntaje y veredicto de cada opcion.">
           <div className="grid gap-3">
             {evolution.rankedCandidates.map((item) => (
               <div key={item.candidate.id} className="min-w-0 rounded border border-border bg-background px-3 py-2 text-sm">
                 <div className="flex flex-wrap gap-2">
                   <Badge tone={evolutionVerdictTone(item.score.verdict)}>{evolutionVerdictLabel(item.score.verdict)}</Badge>
                   <Badge>{dimensionLabel(item.candidate.dimension)}</Badge>
-                  <Badge>score {item.score.netScore}</Badge>
+                  <Badge>puntaje {item.score.netScore}</Badge>
                   <Badge tone={riskTone(item.candidate.riskLevel)}>riesgo {item.candidate.riskLevel}</Badge>
                 </div>
                 <h3 className="mt-2 text-sm font-semibold break-words">{item.candidate.title}</h3>
@@ -854,14 +890,14 @@ function EvolutionTab({ evolution }: { evolution: EvolutionPlan | null }) {
 }
 
 function WorkPackageTab({ workPackage }: { workPackage: DevelopmentWorkPackage | null }) {
-  if (!workPackage) return <Empty text="Sin paquete de trabajo. Elige un objetivo y presiona Paquete." />;
+  if (!workPackage) return <Empty text="Sin preparacion tecnica. Elige un objetivo y abre Paquete tecnico desde Detalles tecnicos." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Paquete De Trabajo" description="Plan de programacion local con pruebas y barandas.">
+      <Card title="Preparacion tecnica" description="Plan local con pasos, archivos sugeridos y pruebas.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={workPackageStatusTone(workPackage.status)}>{workPackageStatusLabel(workPackage.status)}</Badge>
           <Badge>{workPackage.branchStrategy}</Badge>
-          <Badge>{workPackage.gates.length} gates</Badge>
+          <Badge>{workPackage.gates.length} pruebas</Badge>
         </div>
         <h3 className="mt-3 text-base font-semibold break-words">{workPackage.title}</h3>
         <p className="mt-1 text-sm text-muted-foreground break-words">{workPackage.summary}</p>
@@ -872,14 +908,14 @@ function WorkPackageTab({ workPackage }: { workPackage: DevelopmentWorkPackage |
             <List items={workPackage.filesToInspect} />
           </div>
           <div>
-            <h4 className="text-sm font-semibold">Pasos de implementacion</h4>
+            <h4 className="text-sm font-semibold">Pasos de trabajo</h4>
             <List items={workPackage.implementationSteps} />
           </div>
         </div>
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Plan De Pruebas" description="Gates obligatorios para cerrar el microciclo.">
+        <Card title="Plan de pruebas" description="Pruebas necesarias para cerrar el proceso corto.">
           <div className="grid gap-3">
             {workPackage.testPlan.map((test) => (
               <div key={test.gate} className="min-w-0 rounded border border-border bg-background px-3 py-2 text-sm">
@@ -893,7 +929,7 @@ function WorkPackageTab({ workPackage }: { workPackage: DevelopmentWorkPackage |
             ))}
           </div>
         </Card>
-        <Card title="Aceptacion Y Parada" description="Criterios para decidir si el ciclo termina.">
+        <Card title="Como se da por terminado" description="Criterios para decidir si el ciclo termina.">
           <List items={workPackage.acceptanceCriteria} />
           <List items={workPackage.stopConditions} tone="warning" />
           <List items={workPackage.warnings} tone="warning" />
@@ -904,10 +940,10 @@ function WorkPackageTab({ workPackage }: { workPackage: DevelopmentWorkPackage |
 }
 
 function ContextPackTab({ contextPack }: { contextPack: DevelopmentContextPack | null }) {
-  if (!contextPack) return <Empty text="Sin contexto local. Presiona Contexto para preparar memoria de trabajo sanitizada." />;
+  if (!contextPack) return <Empty text="Sin contexto local. Presiona Contexto para preparar una lectura segura del proyecto." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Contexto Local" description="Memoria de trabajo acotada para modelos Ollama, sin escritura sobre OneEpis.">
+      <Card title="Lectura local" description="Resumen acotado para el modelo local Ollama, sin escribir en OneEpis.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={contextPackTone(contextPack.status)}>{contextPackStatusLabel(contextPack.status)}</Badge>
           <Badge>{contextPack.files.length} entradas</Badge>
@@ -939,12 +975,12 @@ function ContextPackTab({ contextPack }: { contextPack: DevelopmentContextPack |
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Notas Para El Modelo" description="Instrucciones de uso para el contexto local.">
+        <Card title="Notas para el modelo local" description="Instrucciones de uso para esta lectura.">
           <List items={contextPack.promptNotes} />
-          <List items={contextPack.gates.map((gate) => `Gate requerido: ${gate}`)} />
+          <List items={contextPack.gates.map((gate) => `Prueba requerida: ${gate}`)} />
         </Card>
-        <Card title="Omisiones Y Riesgos" description="Nada omitido se debe asumir como conocido por el agente.">
-          <List items={contextPack.warnings} tone="warning" empty="Sin warnings del contexto." />
+        <Card title="Omisiones y riesgos" description="Nada omitido se debe asumir como conocido por el agente.">
+          <List items={contextPack.warnings} tone="warning" empty="Sin avisos del contexto." />
         </Card>
       </div>
     </section>
@@ -952,10 +988,10 @@ function ContextPackTab({ contextPack }: { contextPack: DevelopmentContextPack |
 }
 
 function BriefTab({ brief }: { brief: DevelopmentBrief | null }) {
-  if (!brief) return <Empty text="Sin brief local. Presiona Brief IA para preparar una orden de trabajo gobernada." />;
+  if (!brief) return <Empty text="Sin instrucciones para el modelo local. Abre Instrucciones IA desde Detalles tecnicos." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Brief Local" description="Orden de trabajo para Ollama; no aplica cambios ni reemplaza PatchDraft.">
+      <Card title="Instrucciones para Ollama" description="Orden de trabajo para el modelo local; no aplica cambios por si sola.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={contextPackTone(brief.status)}>{contextPackStatusLabel(brief.status)}</Badge>
           <Badge>{brief.modelUsed}</Badge>
@@ -973,10 +1009,10 @@ function BriefTab({ brief }: { brief: DevelopmentBrief | null }) {
             <List items={brief.proposal.filesToChange.map((file) => `Archivo sugerido: ${file}`)} />
             <List items={brief.proposal.implementationNotes} />
             <List items={brief.proposal.risks} tone="warning" />
-            <List items={brief.proposal.gates.map((gate) => `Gate sugerido: ${gate}`)} />
+            <List items={brief.proposal.gates.map((gate) => `Prueba sugerida: ${gate}`)} />
           </div>
         ) : (
-          <Empty text="Sin propuesta del modelo local; el brief determinista queda disponible." />
+          <Empty text="Sin propuesta del modelo local; las instrucciones seguras quedan disponibles." />
         )}
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="min-w-0">
@@ -991,7 +1027,7 @@ function BriefTab({ brief }: { brief: DevelopmentBrief | null }) {
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Prompts" description="Texto enviado al modelo local cuando se pide propuesta.">
+        <Card title="Mensajes tecnicos" description="Texto enviado al modelo local cuando se pide propuesta.">
           <h4 className="text-xs font-semibold text-muted-foreground">Sistema</h4>
           <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
             {brief.systemPrompt}
@@ -1001,7 +1037,7 @@ function BriefTab({ brief }: { brief: DevelopmentBrief | null }) {
             {brief.userPrompt}
           </pre>
         </Card>
-        <Card title="Parada Y Siguientes Pasos" description="Nada de esto concede apply.">
+        <Card title="Parada y siguientes pasos" description="Nada de esto permite aplicar cambios automaticamente.">
           <List items={brief.nextActions} />
           <List items={brief.stopConditions} tone="warning" />
           <List items={brief.warnings} tone="warning" />
@@ -1013,11 +1049,11 @@ function BriefTab({ brief }: { brief: DevelopmentBrief | null }) {
 
 function DecisionTab({ decision }: { decision: ImplementationDecision | null }) {
   if (!decision) {
-    return <Empty text="Sin decision. Presiona Decision para pedir propuesta local y traducirla a un paso listo para PatchDraft." />;
+    return <Empty text="Sin decision. Abre Decision tecnica para traducir una propuesta local a un borrador revisable." />;
   }
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Decision De Implementacion" description="Traduce la propuesta local en una decision pequena, revisable y sin escritura.">
+      <Card title="Decision tecnica" description="Traduce la propuesta local en una decision pequena, revisable y sin escritura.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={decisionTone(decision.status)}>{implementationStatusLabel(decision.status)}</Badge>
           <Badge>{decision.modelUsed}</Badge>
@@ -1025,29 +1061,29 @@ function DecisionTab({ decision }: { decision: ImplementationDecision | null }) 
         </div>
         <p className="mt-3 text-sm leading-6 break-words">{decision.summary}</p>
         <HelpText label="Objetivo" value={decision.objective} />
-        <HelpText label="Intencion de PatchDraft" value={decision.patchIntent} />
+        <HelpText label="Intencion del borrador" value={decision.patchIntent} />
         <div className="mt-3 grid gap-4 md:grid-cols-2">
           <div className="min-w-0">
             <h4 className="text-sm font-semibold">Archivos Seleccionados</h4>
             <List items={decision.selectedFiles} empty="Sin archivos aprobados." />
           </div>
           <div className="min-w-0">
-            <h4 className="text-sm font-semibold">Gates Requeridos</h4>
-            <List items={decision.requiredGates} empty="Sin gates aprobados." />
+            <h4 className="text-sm font-semibold">Pruebas requeridas</h4>
+            <List items={decision.requiredGates} empty="Sin pruebas aprobadas." />
           </div>
         </div>
         <div className="mt-3">
-          <h4 className="text-sm font-semibold">Pasos De Implementacion</h4>
+          <h4 className="text-sm font-semibold">Pasos de trabajo</h4>
           <List items={decision.implementationSteps} empty="Sin pasos revisables." />
         </div>
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Bloqueos Y Warnings" description="Nada pasa a PatchDraft si queda un bloqueo activo.">
+        <Card title="Bloqueos y avisos" description="Nada pasa al borrador si queda un bloqueo activo.">
           <List items={decision.blockers} tone="warning" empty="Sin bloqueos." />
-          <List items={decision.warnings} tone="warning" empty="Sin warnings." />
+          <List items={decision.warnings} tone="warning" empty="Sin avisos." />
         </Card>
-        <Card title="Aceptacion Y Siguiente Accion" description="Cierre esperado antes de preparar diff.">
+        <Card title="Aceptacion y siguiente accion" description="Cierre esperado antes de preparar la lista de cambios.">
           <List items={decision.acceptanceCriteria} />
           <List items={decision.nextActions} empty="Sin acciones siguientes." />
         </Card>
@@ -1057,23 +1093,23 @@ function DecisionTab({ decision }: { decision: ImplementationDecision | null }) 
 }
 
 function PlanTab({ plan }: { plan: MicroPlan | null }) {
-  if (!plan) return <Empty text="Sin microplan." />;
+  if (!plan) return <Empty text="Sin plan tecnico." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <Card title="Microplan" description="Decision pequena, verificable y ajustada a gobernanza.">
+      <Card title="Plan tecnico" description="Decision pequena, verificable y ajustada a las reglas de OneEpis.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={plan.blocked ? "warning" : "success"}>{plan.blocked ? "Bloqueado" : "Revisable"}</Badge>
           <Badge tone={riskTone(plan.riskLevel)}>Riesgo {plan.riskLevel}</Badge>
-          <Badge>{plan.modelUsed || "local_rules"}</Badge>
+          <Badge>{plainText(plan.modelUsed || "local_rules")}</Badge>
         </div>
         <p className="mt-3 text-sm leading-6 break-words">{plan.objective}</p>
         <List items={plan.steps} />
       </Card>
-      <Card title="Superficies" description="Donde tocaria el cambio y como se validaria.">
+      <Card title="Zonas tocadas" description="Donde podria tocar el cambio y como se comprobara.">
         <List items={plan.touchedSurfaces} empty="Sin superficies." />
         <div className="mt-4">
-          <PanelIcon icon={<ListChecks className="h-4 w-4" />} label={plan.recommendedGate || "sin_gate"} />
-          <List items={plan.requiredGates} empty="Sin gates requeridos." />
+          <PanelIcon icon={<ListChecks className="h-4 w-4" />} label={plainText(plan.recommendedGate || "sin prueba")} />
+          <List items={plan.requiredGates} empty="Sin pruebas requeridas." />
         </div>
         <List items={plan.warnings} tone="warning" />
       </Card>
@@ -1094,21 +1130,24 @@ function PatchTab({
   onPrepareApply: () => void;
   preparing: boolean;
 }) {
-  if (!draft) return <Empty text="Sin PatchDraft." />;
+  if (!draft) return <Empty text="Sin borrador de cambios. Presiona Crear borrador para preparar una lista revisable." />;
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-      <Card title="PatchDraft" description="Diff revisable; no escribe en el repo objetivo por si solo.">
+      <Card title="Borrador de cambios" description="Lista revisable; no escribe en el proyecto por si sola.">
         <div className="flex flex-wrap gap-2">
           <Badge tone={draft.blocked ? "warning" : "success"}>{draft.blocked ? "Bloqueado" : "Revisable"}</Badge>
           <Badge>{draft.id}</Badge>
-          <Badge>{draft.modelUsed || "local_rules"}</Badge>
+          <Badge>{plainText(draft.modelUsed || "local_rules")}</Badge>
         </div>
         <p className="mt-3 text-sm leading-6 break-words">{draft.summary}</p>
-        <pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
-          {draft.unifiedDiff}
-        </pre>
+        <details className="mt-3 rounded border border-border bg-background">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Ver lista tecnica de cambios</summary>
+          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words border-t border-border p-3 text-xs text-muted-foreground">
+            {draft.unifiedDiff}
+          </pre>
+        </details>
       </Card>
-      <Card title="Revision" description="Checks deterministas antes de cualquier apply controlado.">
+      <Card title="Revision de seguridad" description="Comprobaciones antes de cualquier aplicacion controlada.">
         {review ? (
           <>
             <div className="flex flex-wrap gap-2">
@@ -1124,7 +1163,7 @@ function PatchTab({
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="secondary" onClick={onPrepareApply} disabled={preparing || !review}>
             <ShieldCheck className="mr-2 h-4 w-4" />
-            {preparing ? "Prevalidando..." : "Prevalidar Apply"}
+            {preparing ? "Revisando..." : "Revisar si se puede aplicar"}
           </Button>
         </div>
         {readiness && (
@@ -1135,10 +1174,10 @@ function PatchTab({
               <Badge>{readiness.branchStrategy}</Badge>
             </div>
             <p className="mt-2 break-words text-muted-foreground">{readiness.summary}</p>
-            <HelpText label="Token requerido" value={readiness.confirmToken} />
+            <HelpText label="Confirmacion requerida" value={readiness.confirmToken} />
             <HelpText label="Rama actual" value={readiness.currentBranch} />
             <List items={readiness.checks.map((item) => `${item.name}: ${explainStatus(item.status)} - ${item.detail}`)} />
-            <List items={readiness.blocks} tone="warning" empty="Sin bloqueos de apply." />
+            <List items={readiness.blocks} tone="warning" empty="Sin bloqueos para aplicar cambios." />
             <List items={readiness.nextActions} empty="Sin acciones siguientes." />
           </div>
         )}
@@ -1159,11 +1198,11 @@ function GateTab({
 }) {
   return (
     <section className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-      <Card title="Gates" description="Solo scripts declarados por el repo objetivo.">
-        <List items={inspection?.declaredGates ?? []} empty="Sin gates declarados." />
+      <Card title="Pruebas" description="Solo comandos declarados por el proyecto objetivo.">
+        <List items={inspection?.declaredGates ?? []} empty="Sin pruebas declaradas." />
         {plan?.recommendedGate && <p className="mt-3 text-sm text-muted-foreground break-words">Recomendado: {plan.recommendedGate}</p>}
       </Card>
-      <Card title="Resultado" description="Salida sanitizada del gate ejecutado.">
+      <Card title="Resultado" description="Salida segura de la prueba ejecutada.">
         {gateResult ? (
           <>
             <div className="flex flex-wrap gap-2">
@@ -1179,7 +1218,7 @@ function GateTab({
             </pre>
           </>
         ) : (
-          <Empty text="Sin resultado de gate." />
+          <Empty text="Sin resultado de prueba." />
         )}
       </Card>
     </section>
@@ -1189,7 +1228,7 @@ function GateTab({
 function HistoryTab({ run, runs }: { run: AgentRun | null; runs: AgentRunSummary[] }) {
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Card title="Ultimo ciclo" description="Estados del microproceso cerrado.">
+      <Card title="Ultimo proceso" description="Estados del proceso corto cerrado.">
         {run ? (
           <>
             <div className="flex flex-wrap gap-2">
@@ -1203,7 +1242,7 @@ function HistoryTab({ run, runs }: { run: AgentRun | null; runs: AgentRunSummary
           <Empty text="Sin ciclo reciente." />
         )}
       </Card>
-      <Card title="Runs" description="Historial local cuando la persistencia esta configurada.">
+      <Card title="Historial" description="Registro local cuando la persistencia esta configurada.">
         {runs.length > 0 ? (
           <div className="grid gap-2">
             {runs.map((item) => (
@@ -1217,7 +1256,7 @@ function HistoryTab({ run, runs }: { run: AgentRun | null; runs: AgentRunSummary
             ))}
           </div>
         ) : (
-          <Empty text="Sin runs persistidos." />
+          <Empty text="Sin ejecuciones guardadas." />
         )}
       </Card>
     </section>
@@ -1246,12 +1285,12 @@ function PanelIcon({ icon, label }: { icon: ReactNode; label: string }) {
 }
 
 function List({ items, empty, tone = "neutral" }: { items: string[]; empty?: string; tone?: "neutral" | "warning" }) {
-  if (items.length === 0) return empty ? <p className="mt-3 text-sm text-muted-foreground break-words">{empty}</p> : null;
+  if (items.length === 0) return empty ? <p className="mt-3 text-sm text-muted-foreground break-words">{plainText(empty)}</p> : null;
   return (
     <ul className="mt-3 grid gap-2 text-sm">
       {items.map((item, index) => (
         <li key={`${item}-${index}`} className={cn("min-w-0 leading-5 break-words", tone === "warning" ? "text-warning" : "text-muted-foreground")}>
-          {item}
+          {plainText(item)}
         </li>
       ))}
     </ul>
@@ -1259,24 +1298,24 @@ function List({ items, empty, tone = "neutral" }: { items: string[]; empty?: str
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground break-words">{text}</p>;
+  return <p className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground break-words">{plainText(text)}</p>;
 }
 
 function tabLabel(tab: Tab) {
   const labels: Record<Tab, string> = {
-    repo: "Repo",
-    preparacion: "Preparacion",
-    evolucion: "Evolucion",
-    paquete: "Paquete",
+    repo: "Proyecto",
+    preparacion: "Estado",
+    evolucion: "Próximo paso",
+    paquete: "Paquete técnico",
     contexto: "Contexto",
-    brief: "Brief",
-    decision: "Decision",
-    microproceso: "Microproceso",
-    reporte: "Reporte",
-    plan: "Plan",
-    patch: "Patch",
-    gates: "Gates",
-    bitacora: "Bitacora",
+    brief: "Instrucciones IA",
+    decision: "Decisión técnica",
+    microproceso: "Ensayo",
+    reporte: "Reporte técnico",
+    plan: "Plan técnico",
+    patch: "Borrador",
+    gates: "Pruebas",
+    bitacora: "Historial",
   };
   return labels[tab];
 }
@@ -1323,11 +1362,11 @@ function evolutionVerdictLabel(verdict: string) {
 function dimensionLabel(dimension: string) {
   const labels: Record<string, string> = {
     objective_alignment: "alineacion al objetivo",
-    governance_fit: "gobernanza",
+    governance_fit: "reglas de OneEpis",
     security: "seguridad",
     clinical_truth: "verdad clinica",
     executable_learning: "aprendizaje ejecutable",
-    anti_bloat: "anti-bloat",
+    anti_bloat: "evitar crecimiento innecesario",
     ai_local: "IA local",
   };
   return labels[dimension] ?? dimension;
@@ -1349,8 +1388,8 @@ function decisionTone(status: string) {
 
 function implementationStatusLabel(status: string) {
   const labels: Record<string, string> = {
-    ready_to_draft: "listo para PatchDraft",
-    needs_model_proposal: "requiere propuesta local",
+    ready_to_draft: "listo para borrador",
+    needs_model_proposal: "requiere propuesta del modelo local",
     blocked: "bloqueado",
   };
   return labels[status] ?? status;
@@ -1380,9 +1419,9 @@ function workPackageStatusTone(status: string) {
 
 function workPackageStatusLabel(status: string) {
   const labels: Record<string, string> = {
-    ready_to_draft: "listo para PatchDraft",
+    ready_to_draft: "listo para borrador",
     blocked: "bloqueado",
-    needs_gate: "requiere gate",
+    needs_gate: "requiere prueba",
   };
   return labels[status] ?? status;
 }
