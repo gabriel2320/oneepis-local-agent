@@ -11,6 +11,7 @@ import type {
   DevelopmentReadiness,
   DevelopmentWorkPackage,
   GateResult,
+  ImplementationDecision,
   MicroPlan,
   OllamaStatus,
   PatchDraft,
@@ -40,6 +41,10 @@ export function getDevelopmentContextPack(repoPath: string, objective: string, b
 
 export function getDevelopmentBrief(repoPath: string, objective: string, askModel = false, baseUrl?: string) {
   return invoke<DevelopmentBrief>("development_brief", { repoPath, objective, askModel, baseUrl });
+}
+
+export function getImplementationDecision(repoPath: string, objective: string, askModel = true, baseUrl?: string) {
+  return invoke<ImplementationDecision>("implementation_decision", { repoPath, objective, askModel, baseUrl });
 }
 
 export function planMicrocycle(repoPath: string, objective: string, baseUrl?: string) {

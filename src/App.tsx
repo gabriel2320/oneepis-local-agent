@@ -23,6 +23,7 @@ import {
   getDevelopmentContextPack,
   getDevelopmentReadiness,
   getDevelopmentWorkPackage,
+  getImplementationDecision,
   getOllamaStatus,
   inspectRepository,
   listRuns,
@@ -43,6 +44,7 @@ import type {
   DevelopmentReadiness,
   DevelopmentWorkPackage,
   GateResult,
+  ImplementationDecision,
   MicroPlan,
   OllamaStatus,
   PatchDraft,
@@ -57,7 +59,7 @@ import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "preparacion", "paquete", "contexto", "brief", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "paquete", "contexto", "brief", "decision", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -88,6 +90,7 @@ function App() {
   const [workPackage, setWorkPackage] = useState<DevelopmentWorkPackage | null>(null);
   const [contextPack, setContextPack] = useState<DevelopmentContextPack | null>(null);
   const [brief, setBrief] = useState<DevelopmentBrief | null>(null);
+  const [decision, setDecision] = useState<ImplementationDecision | null>(null);
   const [plan, setPlan] = useState<MicroPlan | null>(null);
   const [draft, setDraft] = useState<PatchDraft | null>(null);
   const [review, setReview] = useState<PatchReview | null>(null);
@@ -206,6 +209,20 @@ function App() {
       const nextBrief = await getDevelopmentBrief(repoPath, objective, true);
       setBrief(nextBrief);
       setActiveTab("brief");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function createDecision() {
+    setBusy("decision");
+    setError(null);
+    try {
+      const nextDecision = await getImplementationDecision(repoPath, objective, true);
+      setDecision(nextDecision);
+      setActiveTab("decision");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -458,6 +475,10 @@ function App() {
                   <Bot className="mr-2 h-4 w-4" />
                   {busy === "brief" ? "Brief..." : "Brief IA"}
                 </Button>
+                <Button variant="secondary" onClick={createDecision} disabled={busy !== null}>
+                  <ListChecks className="mr-2 h-4 w-4" />
+                  {busy === "decision" ? "Decidiendo..." : "Decision"}
+                </Button>
                 <Button variant="secondary" onClick={runDryCycle} disabled={busy !== null}>
                   <Play className="mr-2 h-4 w-4" />
                   {busy === "run" ? "Ejecutando..." : "Dry-run"}
@@ -488,6 +509,7 @@ function App() {
         {activeTab === "paquete" && <WorkPackageTab workPackage={workPackage} />}
         {activeTab === "contexto" && <ContextPackTab contextPack={contextPack} />}
         {activeTab === "brief" && <BriefTab brief={brief} />}
+        {activeTab === "decision" && <DecisionTab decision={decision} />}
         {activeTab === "microproceso" && <MicroProcessTab steps={microSteps} run={run} gateResult={gateResult} />}
         {activeTab === "reporte" && <ReportTab report={report} />}
         {activeTab === "plan" && <PlanTab plan={plan} />}
@@ -872,6 +894,51 @@ function BriefTab({ brief }: { brief: DevelopmentBrief | null }) {
   );
 }
 
+function DecisionTab({ decision }: { decision: ImplementationDecision | null }) {
+  if (!decision) {
+    return <Empty text="Sin decision. Presiona Decision para pedir propuesta local y traducirla a un paso listo para PatchDraft." />;
+  }
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Decision De Implementacion" description="Traduce la propuesta local en una decision pequena, revisable y sin escritura.">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={decisionTone(decision.status)}>{implementationStatusLabel(decision.status)}</Badge>
+          <Badge>{decision.modelUsed}</Badge>
+          <Badge>{decision.sourceProposalStatus}</Badge>
+        </div>
+        <p className="mt-3 text-sm leading-6 break-words">{decision.summary}</p>
+        <HelpText label="Objetivo" value={decision.objective} />
+        <HelpText label="Intencion de PatchDraft" value={decision.patchIntent} />
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold">Archivos Seleccionados</h4>
+            <List items={decision.selectedFiles} empty="Sin archivos aprobados." />
+          </div>
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold">Gates Requeridos</h4>
+            <List items={decision.requiredGates} empty="Sin gates aprobados." />
+          </div>
+        </div>
+        <div className="mt-3">
+          <h4 className="text-sm font-semibold">Pasos De Implementacion</h4>
+          <List items={decision.implementationSteps} empty="Sin pasos revisables." />
+        </div>
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Bloqueos Y Warnings" description="Nada pasa a PatchDraft si queda un bloqueo activo.">
+          <List items={decision.blockers} tone="warning" empty="Sin bloqueos." />
+          <List items={decision.warnings} tone="warning" empty="Sin warnings." />
+        </Card>
+        <Card title="Aceptacion Y Siguiente Accion" description="Cierre esperado antes de preparar diff.">
+          <List items={decision.acceptanceCriteria} />
+          <List items={decision.nextActions} empty="Sin acciones siguientes." />
+        </Card>
+      </div>
+    </section>
+  );
+}
+
 function PlanTab({ plan }: { plan: MicroPlan | null }) {
   if (!plan) return <Empty text="Sin microplan." />;
   return (
@@ -1085,6 +1152,7 @@ function tabLabel(tab: Tab) {
     paquete: "Paquete",
     contexto: "Contexto",
     brief: "Brief",
+    decision: "Decision",
     microproceso: "Microproceso",
     reporte: "Reporte",
     plan: "Plan",
@@ -1106,6 +1174,22 @@ function applyReadinessTone(status: string) {
   if (status === "ready_for_confirmation") return "warning";
   if (status === "blocked") return "danger";
   return "neutral";
+}
+
+function decisionTone(status: string) {
+  if (status === "ready_to_draft") return "success";
+  if (status === "needs_model_proposal") return "warning";
+  if (status === "blocked") return "danger";
+  return "neutral";
+}
+
+function implementationStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    ready_to_draft: "listo para PatchDraft",
+    needs_model_proposal: "requiere propuesta local",
+    blocked: "bloqueado",
+  };
+  return labels[status] ?? status;
 }
 
 function readinessTone(status?: string) {

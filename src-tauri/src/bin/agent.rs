@@ -59,6 +59,15 @@ async fn run() -> Result<(), String> {
             let ask_model = args.iter().any(|arg| arg == "--ask-model");
             print_json(&brief::development_brief(repo_path, objective, ask_model, None).await?)?;
         }
+        "decision" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Preparar decision de implementacion gobernada para OneEpis.");
+            let ask_model = args.iter().any(|arg| arg == "--ask-model");
+            print_json(
+                &brief::implementation_decision(repo_path, objective, ask_model, None).await?,
+            )?;
+        }
         "plan" => {
             let repo_path = required_repo(&args)?;
             let objective = option_value(&args, "--objective")
@@ -195,7 +204,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent report <repo> [--objective texto] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent report <repo> [--objective texto] | agent ollama | agent stop"
             .to_string(),
     )
 }

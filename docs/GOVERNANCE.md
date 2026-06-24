@@ -35,6 +35,7 @@ El agente local puede actuar con mas poder solo dentro de estos limites:
 - crear paquete de trabajo con archivos a inspeccionar, pasos, plan de pruebas, criterios de aceptacion y condiciones de parada;
 - crear context pack local de solo lectura con extractos sanitizados, limites de bytes, omisiones explicitas y notas para Ollama;
 - crear brief local de solo lectura con prompts, contrato JSON, propuesta Ollama opcional y condiciones de parada;
+- convertir una propuesta local en `ImplementationDecision` de solo lectura, con archivos, gates, bloqueos y aceptacion;
 - producir microplan con riesgo, superficies, gates y warnings;
 - producir `PatchDraft` revisable sin escritura real;
 - revisar drafts con checks deterministas;

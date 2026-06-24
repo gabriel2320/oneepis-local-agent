@@ -151,6 +151,23 @@ export type DevelopmentBrief = {
   proposal?: LocalModelProposal | null;
 };
 
+export type ImplementationDecision = {
+  repoPath: string;
+  objective: string;
+  status: "ready_to_draft" | "needs_model_proposal" | "blocked" | string;
+  summary: string;
+  modelUsed: string;
+  sourceProposalStatus: string;
+  selectedFiles: string[];
+  implementationSteps: string[];
+  requiredGates: string[];
+  acceptanceCriteria: string[];
+  blockers: string[];
+  warnings: string[];
+  patchIntent: string;
+  nextActions: string[];
+};
+
 export type MicroPlan = {
   objective: string;
   recommendedGate: string;

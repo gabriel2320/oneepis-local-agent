@@ -3,7 +3,8 @@ use crate::agent::ollama::ask_for_development_proposal;
 use crate::agent::repo::inspect_repository;
 use crate::agent::safety::sanitize_log;
 use crate::agent::types::{
-    DevelopmentBrief, DevelopmentContextPack, DevelopmentWorkPackage, LocalModelProposal,
+    DevelopmentBrief, DevelopmentContextPack, DevelopmentWorkPackage, ImplementationDecision,
+    LocalModelProposal,
 };
 use crate::agent::work_package::{build_development_work_package, development_work_package};
 use std::path::Path;
@@ -28,6 +29,16 @@ pub async fn development_brief(
     }
 
     Ok(brief)
+}
+
+pub async fn implementation_decision(
+    repo_path: &str,
+    objective: &str,
+    ask_model: bool,
+    base_url: Option<String>,
+) -> Result<ImplementationDecision, String> {
+    let brief = development_brief(repo_path, objective, ask_model, base_url).await?;
+    Ok(build_implementation_decision(&brief))
 }
 
 pub fn build_development_brief(
@@ -81,6 +92,99 @@ pub fn build_development_brief(
         stop_conditions: package.stop_conditions.clone(),
         next_actions: next_actions(status, package),
         proposal,
+    }
+}
+
+pub fn build_implementation_decision(brief: &DevelopmentBrief) -> ImplementationDecision {
+    let proposal_status = brief
+        .proposal
+        .as_ref()
+        .map(|proposal| proposal.status.clone())
+        .unwrap_or_else(|| "missing".to_string());
+    let mut blockers = Vec::new();
+    let mut warnings = brief.warnings.clone();
+    let mut selected_files = Vec::new();
+    let mut implementation_steps = Vec::new();
+    let mut required_gates = brief.gates.clone();
+    let mut patch_intent = "Sin decision aprobada para PatchDraft.".to_string();
+
+    if brief.status == "blocked" {
+        blockers.push(
+            "Brief bloqueado: resolver paquete/contexto antes de decidir implementacion."
+                .to_string(),
+        );
+    }
+
+    match brief.proposal.as_ref() {
+        Some(proposal) if proposal.status == "proposed" => {
+            selected_files = proposal.files_to_change.clone();
+            implementation_steps = proposal.implementation_notes.clone();
+            required_gates = if proposal.gates.is_empty() {
+                brief.gates.clone()
+            } else {
+                proposal.gates.clone()
+            };
+            patch_intent = format!(
+                "Convertir la propuesta local en un PatchDraft limitado a {} archivo(s) y {} gate(s).",
+                selected_files.len(),
+                required_gates.len()
+            );
+            if selected_files.is_empty() {
+                blockers.push("La propuesta no selecciona archivos para cambiar.".to_string());
+            }
+            if implementation_steps.is_empty() {
+                blockers
+                    .push("La propuesta no deja pasos de implementacion revisables.".to_string());
+            }
+            if required_gates.is_empty() {
+                blockers.push("La decision no declara gates requeridos.".to_string());
+            }
+            warnings.extend(proposal.risks.clone());
+        }
+        Some(proposal) => {
+            blockers.push(format!(
+                "Propuesta local no aprobable para PatchDraft: {}.",
+                proposal.status
+            ));
+            warnings.extend(proposal.risks.clone());
+        }
+        None => {
+            blockers.push(
+                "Falta propuesta del modelo local; pedir Brief IA antes de decidir implementacion."
+                    .to_string(),
+            );
+        }
+    }
+
+    let blockers = dedupe(blockers);
+    let warnings = dedupe(warnings);
+    let status = if brief.status == "blocked" {
+        "blocked"
+    } else if !blockers.is_empty() {
+        if proposal_status == "missing" {
+            "needs_model_proposal"
+        } else {
+            "blocked"
+        }
+    } else {
+        "ready_to_draft"
+    };
+
+    ImplementationDecision {
+        repo_path: brief.repo_path.clone(),
+        objective: brief.objective.clone(),
+        status: status.to_string(),
+        summary: decision_summary(status, brief, &selected_files, &required_gates),
+        model_used: brief.model_used.clone(),
+        source_proposal_status: proposal_status,
+        selected_files,
+        implementation_steps,
+        required_gates,
+        acceptance_criteria: decision_acceptance_criteria(brief),
+        blockers: blockers.clone(),
+        warnings,
+        patch_intent,
+        next_actions: decision_next_actions(status, &blockers),
     }
 }
 
@@ -254,6 +358,65 @@ fn next_actions(status: &str, package: &DevelopmentWorkPackage) -> Vec<String> {
     actions
 }
 
+fn decision_summary(
+    status: &str,
+    brief: &DevelopmentBrief,
+    selected_files: &[String],
+    gates: &[String],
+) -> String {
+    match status {
+        "ready_to_draft" => format!(
+            "Decision lista para PatchDraft: {} archivo(s), gates {}.",
+            selected_files.len(),
+            join_or_empty(gates)
+        ),
+        "needs_model_proposal" => format!(
+            "Decision pendiente para '{}': falta propuesta local revisable.",
+            brief.objective
+        ),
+        _ => format!(
+            "Decision bloqueada para '{}': revisar propuesta, contexto o gobernanza.",
+            brief.objective
+        ),
+    }
+}
+
+fn decision_acceptance_criteria(brief: &DevelopmentBrief) -> Vec<String> {
+    let mut criteria = vec![
+        "La decision se convierte en un solo PatchDraft revisable.".to_string(),
+        "No se escribe en el repo objetivo desde la decision.".to_string(),
+        "No se agregan secretos, PHI ni identificadores reales.".to_string(),
+    ];
+    criteria.extend(
+        brief
+            .gates
+            .iter()
+            .map(|gate| format!("{gate} debe pasar o el microciclo se detiene.")),
+    );
+    criteria
+}
+
+fn decision_next_actions(status: &str, blockers: &[String]) -> Vec<String> {
+    match status {
+        "ready_to_draft" => vec![
+            "Crear PatchDraft usando solo la decision seleccionada.".to_string(),
+            "Revisar diff, safety y ApplyReadiness antes de escribir.".to_string(),
+            "Ejecutar el gate requerido tras cualquier apply controlado.".to_string(),
+        ],
+        "needs_model_proposal" => vec![
+            "Presionar Brief IA para pedir propuesta al modelo local.".to_string(),
+            "Revisar que archivos y gates vengan desde el contexto gobernado.".to_string(),
+            "No crear PatchDraft hasta tener una decision ready_to_draft.".to_string(),
+        ],
+        _ => blockers
+            .iter()
+            .take(3)
+            .cloned()
+            .chain(["Regenerar contexto/brief antes de PatchDraft.".to_string()])
+            .collect(),
+    }
+}
+
 fn join_or_empty(items: &[String]) -> String {
     if items.is_empty() {
         "sin_gate".to_string()
@@ -415,6 +578,72 @@ mod tests {
             .risks
             .iter()
             .any(|risk| risk.contains("fuera del contexto")));
+    }
+
+    #[test]
+    fn decision_ready_to_draft_from_governed_proposal() {
+        let package = package("ready_to_draft");
+        let context = context("ready");
+        let proposal = LocalModelProposal {
+            status: "proposed".to_string(),
+            model_used: "qwen3:8b".to_string(),
+            summary: "Actualizar guia gobernada.".to_string(),
+            files_to_change: vec!["AGENTS.md".to_string()],
+            implementation_notes: vec!["Agregar criterio pequeno.".to_string()],
+            risks: Vec::new(),
+            gates: vec!["check:size".to_string()],
+            raw_response: "{}".to_string(),
+        };
+        let brief = build_development_brief(&package, &context, Some(proposal));
+
+        let decision = build_implementation_decision(&brief);
+
+        assert_eq!(decision.status, "ready_to_draft");
+        assert_eq!(decision.source_proposal_status, "proposed");
+        assert!(decision.selected_files.contains(&"AGENTS.md".to_string()));
+        assert!(decision
+            .next_actions
+            .iter()
+            .any(|action| action.contains("PatchDraft")));
+    }
+
+    #[test]
+    fn decision_requires_model_proposal_when_missing() {
+        let package = package("ready_to_draft");
+        let context = context("ready");
+        let brief = build_development_brief(&package, &context, None);
+
+        let decision = build_implementation_decision(&brief);
+
+        assert_eq!(decision.status, "needs_model_proposal");
+        assert!(decision
+            .blockers
+            .iter()
+            .any(|block| block.contains("Falta propuesta")));
+    }
+
+    #[test]
+    fn decision_blocks_needs_review_proposal() {
+        let package = package("ready_to_draft");
+        let context = context("ready");
+        let proposal = LocalModelProposal {
+            status: "needs_review".to_string(),
+            model_used: "qwen3:8b".to_string(),
+            summary: "Cambiar fuera de contexto.".to_string(),
+            files_to_change: vec!["outside.py".to_string()],
+            implementation_notes: vec!["Editar archivo.".to_string()],
+            risks: vec!["Ruta propuesta fuera del contexto gobernado.".to_string()],
+            gates: vec!["check:size".to_string()],
+            raw_response: "{}".to_string(),
+        };
+        let brief = build_development_brief(&package, &context, Some(proposal));
+
+        let decision = build_implementation_decision(&brief);
+
+        assert_eq!(decision.status, "blocked");
+        assert!(decision.warnings.iter().any(|warning| {
+            warning.contains("fuera del contexto") || warning.contains("revision humana")
+        }));
     }
 
     fn package(status: &str) -> DevelopmentWorkPackage {

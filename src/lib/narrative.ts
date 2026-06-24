@@ -231,6 +231,15 @@ function busyNarrative(busy: string): AgentNarrative {
       checklist: ["contexto", "prompt", "contrato JSON", "gates"],
       power: "Puedo pedir una propuesta local estructurada sin dar permisos de apply.",
     },
+    decision: {
+      headline: "Estoy cerrando una decision de implementacion.",
+      body: "Tomo el brief y la propuesta local para seleccionar una sola intencion revisable.",
+      nextAction: "Revisar archivos, gates, bloqueos y si queda listo para PatchDraft.",
+      guardrail: "La decision no escribe archivos; solo autoriza preparar un PatchDraft revisable.",
+      tone: "neutral",
+      checklist: ["propuesta local", "archivos", "gates", "bloqueos"],
+      power: "Puedo transformar una sugerencia de Ollama en una decision pequena y auditable.",
+    },
     draft: {
       headline: "Estoy preparando un PatchDraft.",
       body: "Genero un diff revisable y lo paso por checks deterministas.",

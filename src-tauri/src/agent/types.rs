@@ -198,6 +198,25 @@ pub struct DevelopmentBrief {
     pub proposal: Option<LocalModelProposal>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImplementationDecision {
+    pub repo_path: String,
+    pub objective: String,
+    pub status: String,
+    pub summary: String,
+    pub model_used: String,
+    pub source_proposal_status: String,
+    pub selected_files: Vec<String>,
+    pub implementation_steps: Vec<String>,
+    pub required_gates: Vec<String>,
+    pub acceptance_criteria: Vec<String>,
+    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
+    pub patch_intent: String,
+    pub next_actions: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MicroPlan {
