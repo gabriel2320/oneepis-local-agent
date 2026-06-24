@@ -4,6 +4,7 @@ use agent::brief;
 use agent::context_pack;
 use agent::evolution;
 use agent::gates;
+use agent::local_problems;
 use agent::ollama;
 use agent::patch;
 use agent::persistence;
@@ -13,8 +14,9 @@ use agent::runner;
 use agent::types::{
     AgentRun, AgentRunReport, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, ApplyReadiness,
     DevelopmentBrief, DevelopmentContextPack, DevelopmentReadiness, DevelopmentWorkPackage,
-    EvolutionPlan, GateResult, ImplementationDecision, MicroPlan, OllamaStatus, PatchDraft,
-    PatchReview, RepoInspection, RunRequest,
+    EvolutionPlan, GateResult, ImplementationDecision, LocalProblemPlan, LocalProblemRequest,
+    LocalProblemRun, LocalProblemSpec, MicroPlan, OllamaStatus, PatchDraft, PatchReview,
+    RepoInspection, RunRequest,
 };
 use agent::work_package;
 
@@ -146,6 +148,26 @@ async fn list_runs(
     persistence::list_runs(database_url, limit).await
 }
 
+#[tauri::command]
+fn list_local_problems() -> Result<Vec<LocalProblemSpec>, String> {
+    Ok(local_problems::list_local_problems())
+}
+
+#[tauri::command]
+fn local_problem_plan(request: LocalProblemRequest) -> Result<LocalProblemPlan, String> {
+    local_problems::local_problem_plan(request)
+}
+
+#[tauri::command]
+async fn prepare_local_problem(request: LocalProblemRequest) -> Result<LocalProblemRun, String> {
+    local_problems::prepare_local_problem(request).await
+}
+
+#[tauri::command]
+async fn commit_local_problem(request: LocalProblemRequest) -> Result<LocalProblemRun, String> {
+    local_problems::commit_local_problem(request).await
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -165,7 +187,11 @@ fn main() {
             prepare_apply_readiness,
             apply_approved_patch,
             run_gate,
-            list_runs
+            list_runs,
+            list_local_problems,
+            local_problem_plan,
+            prepare_local_problem,
+            commit_local_problem
         ])
         .run(tauri::generate_context!())
         .expect("error while running OneEpis Local Agent");

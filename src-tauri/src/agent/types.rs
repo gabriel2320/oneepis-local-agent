@@ -442,6 +442,58 @@ pub struct AgentRunReport {
     pub next_actions: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalProblemSpec {
+    pub id: String,
+    pub title: String,
+    pub objective: String,
+    pub branch: String,
+    pub commit_message: String,
+    pub primary_files: Vec<String>,
+    pub allowed_path_markers: Vec<String>,
+    pub gates: Vec<String>,
+    pub forbidden_signals: Vec<String>,
+    pub instructions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalProblemPlan {
+    pub repo_path: String,
+    pub problem: LocalProblemSpec,
+    pub status: String,
+    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
+    pub next_actions: Vec<String>,
+    pub no_push: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalProblemRequest {
+    pub repo_path: String,
+    pub problem_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalProblemRun {
+    pub id: String,
+    pub problem_id: String,
+    pub status: String,
+    pub repo_path: String,
+    pub branch: String,
+    pub commit_sha: Option<String>,
+    pub changed_files: Vec<String>,
+    pub gate_results: Vec<GateResult>,
+    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
+    pub next_actions: Vec<String>,
+    pub no_push: bool,
+    pub summary: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunRequest {

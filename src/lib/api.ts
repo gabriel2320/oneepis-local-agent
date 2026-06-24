@@ -13,6 +13,9 @@ import type {
   EvolutionPlan,
   GateResult,
   ImplementationDecision,
+  LocalProblemPlan,
+  LocalProblemRun,
+  LocalProblemSpec,
   MicroPlan,
   OllamaStatus,
   PatchDraft,
@@ -132,6 +135,22 @@ export function listRuns(limit = 20) {
   return safeInvoke<AgentRunSummary[]>("list_runs", { databaseUrl: null, limit });
 }
 
+export function listLocalProblems() {
+  return safeInvoke<LocalProblemSpec[]>("list_local_problems", {});
+}
+
+export function localProblemPlan(repoPath: string, problemId: string) {
+  return safeInvoke<LocalProblemPlan>("local_problem_plan", { request: { repoPath, problemId } });
+}
+
+export function prepareLocalProblem(repoPath: string, problemId: string) {
+  return safeInvoke<LocalProblemRun>("prepare_local_problem", { request: { repoPath, problemId } });
+}
+
+export function commitLocalProblem(repoPath: string, problemId: string) {
+  return safeInvoke<LocalProblemRun>("commit_local_problem", { request: { repoPath, problemId } });
+}
+
 async function safeInvoke<T>(command: string, args: CommandArgs): Promise<T> {
   if (hasTauriBridge()) {
     try {
@@ -197,6 +216,14 @@ function previewResponse(command: string, args: CommandArgs) {
       return previewReport(repoPath, objective);
     case "list_runs":
       return [];
+    case "list_local_problems":
+      return previewLocalProblems();
+    case "local_problem_plan":
+      return previewLocalProblemPlan(repoPath, String(requestField(args, "problemId") ?? "LOCAL-001"));
+    case "prepare_local_problem":
+      return previewLocalProblemRun(repoPath, String(requestField(args, "problemId") ?? "LOCAL-001"), "ready_for_changes");
+    case "commit_local_problem":
+      return previewLocalProblemRun(repoPath, String(requestField(args, "problemId") ?? "LOCAL-001"), "blocked");
     default:
       throw new Error(PREVIEW_NOTICE);
   }
@@ -569,5 +596,72 @@ function previewReport(repoPath: string, objective: string): AgentRunReport {
     checklist: ["Abrir la app de escritorio.", "Revisar el proyecto real."],
     warnings: [PREVIEW_NOTICE],
     nextActions: ["Abrir la app de escritorio para ejecutar el proceso real."],
+  };
+}
+
+function previewLocalProblems(): LocalProblemSpec[] {
+  return [
+    {
+      id: "LOCAL-001",
+      title: "dieta clinical_intent.py fase 3",
+      objective: "Extraer helpers deterministicos sin cambiar API ni prompts.",
+      branch: "agent/local-001-dieta-clinical-intent-py-fase-3",
+      commitMessage: "LOCAL-001 diet clinical_intent helpers",
+      primaryFiles: ["clinical_intent.py"],
+      allowedPathMarkers: ["clinical_intent"],
+      gates: ["check:api", "check:contract"],
+      forbiddenSignals: ["endpoint", "tabla", "ruta", "permisos", "IA nueva", "RAG", "receta", "firma", "dashboard"],
+      instructions: [
+        "Prioridad: dieta y claridad antes de clinica nueva.",
+        "Un problema LOCAL es una rama y un commit local, sin push automatico.",
+      ],
+    },
+    {
+      id: "LOCAL-003",
+      title: "dividir clinical-intent-result-panel.tsx",
+      objective: "Extraer subpaneles visuales pequenos sin cambiar textos clinicos.",
+      branch: "agent/local-003-dividir-clinical-intent-result-panel",
+      commitMessage: "LOCAL-003 split clinical intent result panel",
+      primaryFiles: ["clinical-intent-result-panel.tsx"],
+      allowedPathMarkers: ["clinical-intent-result"],
+      gates: ["check:web"],
+      forbiddenSignals: ["endpoint", "dashboard", "RAG", "receta", "firma"],
+      instructions: [
+        "Mantener textos clinicos.",
+        "Crear commit local solo si check:web pasa.",
+      ],
+    },
+  ];
+}
+
+function previewLocalProblemPlan(repoPath: string, problemId: string): LocalProblemPlan {
+  const problem = previewLocalProblems().find((item) => item.id === problemId) ?? previewLocalProblems()[0];
+  return {
+    repoPath,
+    problem,
+    status: "blocked",
+    blockers: [PREVIEW_NOTICE],
+    warnings: ["La vista web no puede inspeccionar Git real."],
+    nextActions: ["Abrir la app de escritorio para preparar rama y commit local."],
+    noPush: true,
+  };
+}
+
+function previewLocalProblemRun(repoPath: string, problemId: string, status: string): LocalProblemRun {
+  const problem = previewLocalProblems().find((item) => item.id === problemId) ?? previewLocalProblems()[0];
+  return {
+    id: "preview-local-run",
+    problemId: problem.id,
+    status,
+    repoPath,
+    branch: problem.branch,
+    commitSha: null,
+    changedFiles: [],
+    gateResults: [],
+    blockers: [PREVIEW_NOTICE],
+    warnings: ["No hay push automatico."],
+    nextActions: ["Usar la app de escritorio para ejecutar el ciclo LOCAL real."],
+    noPush: true,
+    summary: "Vista previa web del ciclo LOCAL.",
   };
 }

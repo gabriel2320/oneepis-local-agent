@@ -347,3 +347,42 @@ export type AgentRunReport = {
   warnings: string[];
   nextActions: string[];
 };
+
+export type LocalProblemSpec = {
+  id: string;
+  title: string;
+  objective: string;
+  branch: string;
+  commitMessage: string;
+  primaryFiles: string[];
+  allowedPathMarkers: string[];
+  gates: string[];
+  forbiddenSignals: string[];
+  instructions: string[];
+};
+
+export type LocalProblemPlan = {
+  repoPath: string;
+  problem: LocalProblemSpec;
+  status: string;
+  blockers: string[];
+  warnings: string[];
+  nextActions: string[];
+  noPush: boolean;
+};
+
+export type LocalProblemRun = {
+  id: string;
+  problemId: string;
+  status: string;
+  repoPath: string;
+  branch: string;
+  commitSha?: string | null;
+  changedFiles: string[];
+  gateResults: GateResult[];
+  blockers: string[];
+  warnings: string[];
+  nextActions: string[];
+  noPush: boolean;
+  summary: string;
+};

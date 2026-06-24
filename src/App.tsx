@@ -28,8 +28,12 @@ import {
   getOllamaStatus,
   inspectRepository,
   isBrowserPreview,
+  commitLocalProblem,
   listRuns,
+  listLocalProblems,
+  localProblemPlan,
   planMicrocycle,
+  prepareLocalProblem,
   previewNotice,
   prepareApplyReadiness,
   reviewPatch,
@@ -49,6 +53,9 @@ import type {
   EvolutionPlan,
   GateResult,
   ImplementationDecision,
+  LocalProblemPlan,
+  LocalProblemRun,
+  LocalProblemSpec,
   MicroPlan,
   OllamaStatus,
   PatchDraft,
@@ -64,9 +71,9 @@ import { plainText } from "./lib/plain-language";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "preparacion", "evolucion", "paquete", "contexto", "brief", "decision", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "evolucion", "local", "paquete", "contexto", "brief", "decision", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
-const primaryTabs: Tab[] = ["repo", "preparacion", "evolucion", "microproceso", "patch", "gates", "bitacora"];
+const primaryTabs: Tab[] = ["repo", "preparacion", "evolucion", "local", "microproceso", "patch", "gates", "bitacora"];
 const technicalTabs: Tab[] = ["paquete", "contexto", "brief", "decision", "plan", "reporte"];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -110,6 +117,10 @@ function App() {
   const [run, setRun] = useState<AgentRun | null>(null);
   const [report, setReport] = useState<AgentRunReport | null>(null);
   const [runs, setRuns] = useState<AgentRunSummary[]>([]);
+  const [localProblems, setLocalProblems] = useState<LocalProblemSpec[]>([]);
+  const [selectedLocalProblem, setSelectedLocalProblem] = useState("LOCAL-001");
+  const [localPlan, setLocalPlan] = useState<LocalProblemPlan | null>(null);
+  const [localRun, setLocalRun] = useState<LocalProblemRun | null>(null);
   const [microSteps, setMicroSteps] = useState<MicroStep[]>(initialMicroSteps);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,16 +147,21 @@ function App() {
     setBusy("inspect");
     setError(null);
     try {
-      const [repo, ai, history, ready] = await Promise.all([
+      const [repo, ai, history, ready, problems] = await Promise.all([
         inspectRepository(repoPath),
         getOllamaStatus(),
         listRuns(20),
         getDevelopmentReadiness(repoPath),
+        listLocalProblems(),
       ]);
       setInspection(repo);
       setOllama(ai);
       setRuns(history);
       setReadiness(ready);
+      setLocalProblems(problems);
+      if (!problems.some((problem) => problem.id === selectedLocalProblem)) {
+        setSelectedLocalProblem(problems[0]?.id ?? "LOCAL-001");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -421,6 +437,48 @@ function App() {
     }
   }
 
+  async function planSelectedLocalProblem() {
+    setBusy("localPlan");
+    setError(null);
+    try {
+      const result = await localProblemPlan(repoPath, selectedLocalProblem);
+      setLocalPlan(result);
+      setActiveTab("local");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function prepareSelectedLocalProblem() {
+    setBusy("localPrepare");
+    setError(null);
+    try {
+      const result = await prepareLocalProblem(repoPath, selectedLocalProblem);
+      setLocalRun(result);
+      setActiveTab("local");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function commitSelectedLocalProblem() {
+    setBusy("localCommit");
+    setError(null);
+    try {
+      const result = await commitLocalProblem(repoPath, selectedLocalProblem);
+      setLocalRun(result);
+      setActiveTab("local");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     void loadAll();
   }, []);
@@ -584,6 +642,19 @@ function App() {
         {activeTab === "repo" && <RepoTab inspection={inspection} ollama={ollama} />}
         {activeTab === "preparacion" && <ReadinessTab readiness={readiness} />}
         {activeTab === "evolucion" && <EvolutionTab evolution={evolution} />}
+        {activeTab === "local" && (
+          <LocalProblemTab
+            problems={localProblems}
+            selectedProblem={selectedLocalProblem}
+            onSelectProblem={setSelectedLocalProblem}
+            plan={localPlan}
+            run={localRun}
+            onPlan={planSelectedLocalProblem}
+            onPrepare={prepareSelectedLocalProblem}
+            onCommit={commitSelectedLocalProblem}
+            busy={busy}
+          />
+        )}
         {activeTab === "paquete" && <WorkPackageTab workPackage={workPackage} />}
         {activeTab === "contexto" && <ContextPackTab contextPack={contextPack} />}
         {activeTab === "brief" && <BriefTab brief={brief} />}
@@ -885,6 +956,129 @@ function EvolutionTab({ evolution }: { evolution: EvolutionPlan | null }) {
           </div>
         </Card>
       </div>
+    </section>
+  );
+}
+
+function LocalProblemTab({
+  problems,
+  selectedProblem,
+  onSelectProblem,
+  plan,
+  run,
+  onPlan,
+  onPrepare,
+  onCommit,
+  busy,
+}: {
+  problems: LocalProblemSpec[];
+  selectedProblem: string;
+  onSelectProblem: (problemId: string) => void;
+  plan: LocalProblemPlan | null;
+  run: LocalProblemRun | null;
+  onPlan: () => void;
+  onPrepare: () => void;
+  onCommit: () => void;
+  busy: string | null;
+}) {
+  const selected = problems.find((problem) => problem.id === selectedProblem) ?? problems[0];
+  if (!selected) {
+    return <Empty text="Sin catálogo LOCAL. Presiona Revisar proyecto para cargar los problemas simples permitidos." />;
+  }
+
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Problema LOCAL" description="Un problema simple, una rama agent/local-*, un commit local y cero push automático.">
+        <div className="grid gap-3">
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs font-medium text-muted-foreground">Microciclo</span>
+            <select
+              value={selected.id}
+              onChange={(event) => onSelectProblem(event.target.value)}
+              className="min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            >
+              {problems.map((problem) => (
+                <option key={problem.id} value={problem.id}>
+                  {problem.id} - {problem.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Badge>{selected.id}</Badge>
+            <Badge>{selected.gates.join(", ")}</Badge>
+            <Badge tone="warning">sin push</Badge>
+          </div>
+          <h3 className="text-base font-semibold break-words">{selected.title}</h3>
+          <p className="text-sm leading-6 text-muted-foreground break-words">{selected.objective}</p>
+          <HelpText label="Rama segura" value={selected.branch} />
+          <HelpText label="Commit esperado" value={selected.commitMessage} />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={onPlan} disabled={busy !== null}>
+              <ListChecks className="mr-2 h-4 w-4" />
+              {busy === "localPlan" ? "Revisando..." : "Plan LOCAL"}
+            </Button>
+            <Button variant="secondary" onClick={onPrepare} disabled={busy !== null}>
+              <GitBranch className="mr-2 h-4 w-4" />
+              {busy === "localPrepare" ? "Preparando..." : "Preparar rama"}
+            </Button>
+            <Button variant="secondary" onClick={onCommit} disabled={busy !== null}>
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              {busy === "localCommit" ? "Validando..." : "Crear commit local"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Reglas del problema" description="Lo que el agente puede tocar y lo que debe bloquear.">
+          <h4 className="text-sm font-semibold">Archivos esperados</h4>
+          <List items={selected.primaryFiles} empty="Sin archivo principal declarado." />
+          <h4 className="mt-4 text-sm font-semibold">Señales prohibidas</h4>
+          <List items={selected.forbiddenSignals.slice(0, 12)} tone="warning" empty="Sin señales prohibidas." />
+          <h4 className="mt-4 text-sm font-semibold">Instrucciones</h4>
+          <List items={selected.instructions} />
+        </Card>
+      </div>
+
+      <Card title="Plan LOCAL" description="Preflight antes de tocar rama o commit.">
+        {plan ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={plan.status === "ready" ? "success" : "warning"}>{explainStatus(plan.status)}</Badge>
+              <Badge>{plan.noPush ? "sin push" : "revisar push"}</Badge>
+            </div>
+            <List items={plan.blockers} tone="warning" empty="Sin bloqueos." />
+            <List items={plan.warnings} tone="warning" empty="Sin avisos." />
+            <List items={plan.nextActions} empty="Sin acciones siguientes." />
+          </>
+        ) : (
+          <Empty text="Sin plan LOCAL. Presiona Plan LOCAL para revisar si el proyecto puede ejecutar este microciclo." />
+        )}
+      </Card>
+
+      <Card title="Resultado local" description="Rama, gates y commit local. Nunca hace push automático.">
+        {run ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={run.status === "committed" ? "success" : run.status === "blocked" ? "warning" : "neutral"}>{explainStatus(run.status)}</Badge>
+              <Badge>{run.branch}</Badge>
+              <Badge>{run.noPush ? "sin push" : "revisar push"}</Badge>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground break-words">{run.summary}</p>
+            {run.commitSha && <HelpText label="Commit local" value={run.commitSha} />}
+            <h4 className="mt-4 text-sm font-semibold">Archivos cambiados</h4>
+            <List items={run.changedFiles} empty="Sin archivos cambiados." />
+            <h4 className="mt-4 text-sm font-semibold">Pruebas ejecutadas</h4>
+            <List items={run.gateResults.map((gate) => `${gate.gate}: ${explainStatus(gate.status)} - ${gate.summary}`)} empty="Sin pruebas ejecutadas." />
+            <List items={run.blockers} tone="warning" empty="Sin bloqueos." />
+            <List items={run.warnings} tone="warning" empty="Sin avisos." />
+            <List items={run.nextActions} empty="Sin acciones siguientes." />
+          </>
+        ) : (
+          <Empty text="Sin resultado LOCAL. Prepara la rama y luego crea el commit local cuando existan cambios válidos." />
+        )}
+      </Card>
     </section>
   );
 }
@@ -1306,6 +1500,7 @@ function tabLabel(tab: Tab) {
     repo: "Proyecto",
     preparacion: "Estado",
     evolucion: "Próximo paso",
+    local: "LOCAL",
     paquete: "Paquete técnico",
     contexto: "Contexto",
     brief: "Instrucciones IA",

@@ -140,7 +140,11 @@ fn user_objective_candidate(
         } else {
             "red".to_string()
         },
-        files_to_inspect: candidate_files(package, context, &["agents", "governance", "api", "web", "clinical"]),
+        files_to_inspect: candidate_files(
+            package,
+            context,
+            &["agents", "governance", "api", "web", "clinical"],
+        ),
         gates: package.gates.clone(),
         expected_improvement:
             "Convertir el objetivo actual en un microproceso pequeno, puntuado y revisable."
@@ -298,7 +302,8 @@ fn score_objective_alignment(
         reason: if score > 0 {
             "El candidato responde directamente a la dimension del objetivo ingresado.".to_string()
         } else {
-            "El candidato es util, pero no es la dimension principal del objetivo actual.".to_string()
+            "El candidato es util, pero no es la dimension principal del objetivo actual."
+                .to_string()
         },
     }
 }
@@ -336,7 +341,16 @@ fn score_governance(
 fn score_security(text: &str) -> EvolutionDimensionScore {
     let score = if contains_any(
         text,
-        &["seguridad", "secret", "secreto", "no phi", "sin phi", "identificador", "permiso", "auditoria"],
+        &[
+            "seguridad",
+            "secret",
+            "secreto",
+            "no phi",
+            "sin phi",
+            "identificador",
+            "permiso",
+            "auditoria",
+        ],
     ) {
         3
     } else if text.contains("clin") || text.contains("paciente") {
@@ -347,7 +361,8 @@ fn score_security(text: &str) -> EvolutionDimensionScore {
     EvolutionDimensionScore {
         dimension: "security".to_string(),
         score,
-        reason: "Premia reglas que reducen secretos, PHI, permisos o auditoria faltante.".to_string(),
+        reason: "Premia reglas que reducen secretos, PHI, permisos o auditoria faltante."
+            .to_string(),
     }
 }
 
@@ -398,7 +413,17 @@ fn score_executable_learning(
 }
 
 fn score_anti_bloat(text: &str) -> EvolutionDimensionScore {
-    let score = if contains_any(text, &["near-limit", "tamano", "size", "reducir", "archivo", "anti-bloat"]) {
+    let score = if contains_any(
+        text,
+        &[
+            "near-limit",
+            "tamano",
+            "size",
+            "reducir",
+            "archivo",
+            "anti-bloat",
+        ],
+    ) {
         3
     } else if contains_any(text, &["refactor", "manteni"]) {
         2
@@ -415,7 +440,13 @@ fn score_anti_bloat(text: &str) -> EvolutionDimensionScore {
 fn score_local_ai(text: &str) -> EvolutionDimensionScore {
     let score = if contains_any(
         text,
-        &["ollama", "local", "no external", "sin ia externa", "no ia externa"],
+        &[
+            "ollama",
+            "local",
+            "no external",
+            "sin ia externa",
+            "no ia externa",
+        ],
     ) {
         3
     } else {
@@ -459,7 +490,15 @@ fn bloat_penalty(text: &str) -> i32 {
     if contains_any(text, &["dashboard", "chat", "rag", "workbench"]) {
         penalty += 4;
     }
-    if contains_any(text, &["pantalla nueva", "feature nueva", "modulo nuevo", "sistema amplio"]) {
+    if contains_any(
+        text,
+        &[
+            "pantalla nueva",
+            "feature nueva",
+            "modulo nuevo",
+            "sistema amplio",
+        ],
+    ) {
         penalty += 3;
     }
     penalty
@@ -495,24 +534,52 @@ fn forbidden_flags_for(input: &str) -> Vec<String> {
 fn contains_external_ai(text: &str) -> bool {
     if contains_any(
         text,
-        &["sin ia externa", "no ia externa", "no external ai", "no external-ai"],
+        &[
+            "sin ia externa",
+            "no ia externa",
+            "no external ai",
+            "no external-ai",
+        ],
     ) {
         return false;
     }
-    contains_any(text, &["ia externa", "external ai", "openai", "chatgpt", "claude", "gemini"])
+    contains_any(
+        text,
+        &[
+            "ia externa",
+            "external ai",
+            "openai",
+            "chatgpt",
+            "claude",
+            "gemini",
+        ],
+    )
 }
 
 fn contains_phi(text: &str) -> bool {
     if contains_any(text, &["sin phi", "no phi", "no-phi"]) {
         return false;
     }
-    contains_any(text, &[" phi", "paciente real", "dato real", "rut real", "identificador real"])
+    contains_any(
+        text,
+        &[
+            " phi",
+            "paciente real",
+            "dato real",
+            "rut real",
+            "identificador real",
+        ],
+    )
 }
 
 fn gate_subset(inspection: &RepoInspection, preferred: &[&str]) -> Vec<String> {
     let mut gates = Vec::new();
     for gate in preferred {
-        if inspection.declared_gates.iter().any(|declared| declared == gate) {
+        if inspection
+            .declared_gates
+            .iter()
+            .any(|declared| declared == gate)
+        {
             push_unique(&mut gates, gate);
         }
     }
@@ -522,7 +589,12 @@ fn gate_subset(inspection: &RepoInspection, preferred: &[&str]) -> Vec<String> {
 fn normalize_gates(gates: &[String], inspection: &RepoInspection) -> Vec<String> {
     gates
         .iter()
-        .filter(|gate| inspection.declared_gates.iter().any(|declared| declared == *gate))
+        .filter(|gate| {
+            inspection
+                .declared_gates
+                .iter()
+                .any(|declared| declared == *gate)
+        })
         .cloned()
         .collect()
 }
@@ -570,7 +642,9 @@ fn candidate_files(
 fn hard_blockers(inspection: &RepoInspection) -> Vec<String> {
     let mut blockers = inspection.blocks.clone();
     if !inspection.is_git_repo {
-        blockers.push("El repo objetivo no es Git; la evolucion supervisada queda bloqueada.".to_string());
+        blockers.push(
+            "El repo objetivo no es Git; la evolucion supervisada queda bloqueada.".to_string(),
+        );
     }
     dedupe(blockers)
 }
@@ -590,7 +664,8 @@ fn warnings(
         );
     }
     if !inspection.is_one_epis {
-        warnings.push("Repo sin perfil OneEpis completo; autonomia reducida a revision.".to_string());
+        warnings
+            .push("Repo sin perfil OneEpis completo; autonomia reducida a revision.".to_string());
     }
     dedupe(warnings)
 }
@@ -631,7 +706,11 @@ fn summary_for(
             "{} solo tiene candidatos para revision humana; falta gate o hay alcance ambiguo.",
             inspection.project_name
         ),
-        ("blocked", _) if ranked_candidates.iter().any(|item| item.score.verdict == "blocked") => {
+        ("blocked", _)
+            if ranked_candidates
+                .iter()
+                .any(|item| item.score.verdict == "blocked") =>
+        {
             format!(
                 "{} bloqueo la evolucion supervisada por una bandera prohibida de gobernanza.",
                 inspection.project_name
@@ -684,9 +763,15 @@ fn infer_dimension(input: &str) -> String {
     let text = normalized_text(input);
     if contains_any(&text, &["ollama", "ia local", "no external", "ia externa"]) {
         "ai_local".to_string()
-    } else if contains_any(&text, &["secret", "phi", "permiso", "auditoria", "seguridad"]) {
+    } else if contains_any(
+        &text,
+        &["secret", "phi", "permiso", "auditoria", "seguridad"],
+    ) {
         "security".to_string()
-    } else if contains_any(&text, &["near-limit", "tamano", "size", "archivo", "reducir"]) {
+    } else if contains_any(
+        &text,
+        &["near-limit", "tamano", "size", "archivo", "reducir"],
+    ) {
         "anti_bloat".to_string()
     } else if contains_any(&text, &["test", "gate", "contrato", "tipo"]) {
         "executable_learning".to_string()
@@ -699,7 +784,10 @@ fn infer_dimension(input: &str) -> String {
 
 fn infer_risk(input: &str) -> String {
     let text = normalized_text(input);
-    if contains_any(&text, &["nuevo", "pantalla", "api", "postgres", "firma", "receta"]) {
+    if contains_any(
+        &text,
+        &["nuevo", "pantalla", "api", "postgres", "firma", "receta"],
+    ) {
         "yellow".to_string()
     } else {
         "green".to_string()
@@ -800,7 +888,9 @@ mod tests {
         );
 
         assert_eq!(plan.status, "ready");
-        assert!(plan.local_only_boundary.contains("sin escritura automatica"));
+        assert!(plan
+            .local_only_boundary
+            .contains("sin escritura automatica"));
         assert!(plan
             .selected_candidate
             .as_ref()
@@ -830,7 +920,11 @@ mod tests {
         assert!(plan.selected_candidate.is_none());
         assert!(plan.ranked_candidates.iter().any(|item| {
             item.score.verdict == "blocked"
-                && item.score.reasons.iter().any(|reason| reason.contains("IA externa"))
+                && item
+                    .score
+                    .reasons
+                    .iter()
+                    .any(|reason| reason.contains("IA externa"))
         }));
     }
 

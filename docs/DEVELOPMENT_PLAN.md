@@ -48,6 +48,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Keep dashboards, broad RAG, clinical signature, prescriptions, and AI-protagonist flows blocked unless a specific plan exists.
 - Show governed autonomy explicitly: inspect, plan, draft, review, run gates, and prepare controlled apply only when OneEpis rules allow it.
 - Treat OneEpis warnings as visible guidance and hard blocks as stop conditions with concrete repair actions.
+- Maintain a governed `LOCAL-001..LOCAL-010` catalog for simple diet/refactor tasks: one problem, one safe `agent/local-*` branch, one local commit, declared gates, and no automatic push.
 
 ### v0.4.1 Usability And Clarity
 
@@ -82,6 +83,9 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `EvolutionScore`: dimension scores, risk/bloat penalties, net score, verdict, and Spanish reasons.
 - `EvolutionPlan`: read-only supervised-evolution decision with selected candidate, ranked candidates, blockers, warnings, next actions, and local-only boundary.
 - `AgentRunReport`: Spanish/Markdown review artifact for closed microprocesses, including run id, verdict, objective, branch, model, recommended gate, checklist, warnings, next actions, and lessons.
+- `LocalProblemSpec`: one governed LOCAL problem with objective, branch, commit message, allowed files/surfaces, gates, forbidden signals, and instructions.
+- `LocalProblemPlan`: preflight for one LOCAL problem with blockers, warnings, next actions, and explicit no-push guarantee.
+- `LocalProblemRun`: result of preparing a safe branch or creating a local commit, including changed files, gate results, commit SHA, blockers, warnings, and no-push guarantee.
 - Proposals that mention files outside the governed context or gates outside the package become `needs_review`, not an approved path to PatchDraft.
 - Proposals that omit files may use a visible, deterministic fallback from safe context files; if no safe files exist, the decision stays blocked.
 
@@ -102,7 +106,8 @@ The agent may become more useful without becoming unbounded. Extra power must fo
 11. Prevalidate controlled apply without writing: clean Git, safe branch, token state, and `git apply --check`.
 12. Run only declared gates from `package.json`.
 13. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
-14. Never push automatically.
+14. Prepare and close pre-approved LOCAL problems only on `agent/local-*` branches, with validated files, declared gates, and a local commit.
+15. Never push automatically.
 
 ## Gates
 

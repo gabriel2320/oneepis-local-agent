@@ -51,6 +51,10 @@ npm run agent -- ollama
 npm run agent -- plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Auditar siguiente microciclo"
 npm run agent -- draft "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Preparar PatchDraft"
 npm run agent -- gate "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --gate check:size
+npm run agent -- local-problems
+npm run agent -- local-problem-plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
+npm run agent -- local-problem-prepare "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
+npm run agent -- local-problem-commit "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
 npm run agent -- run "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --max-cycles 1
 npm run agent -- report "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Preparar reporte PR gobernado"
 npm run agent -- list-runs --limit 20
@@ -65,6 +69,30 @@ npm run agent -- apply draft.json --confirm-token APPLY:draft-id --branch-strate
 ```
 
 Los drafts generados por v0.2 quedan bloqueados por diseno. `prepare-apply` no escribe archivos: informa si el draft esta bloqueado, listo para confirmacion o listo para apply en rama segura `agent/<objetivo>`. El comando `apply` existe para drafts concretos, no bloqueados, con diff real, revision aprobada, token humano y rama segura.
+
+## Problemas LOCAL
+
+El agente incluye un catalogo gobernado para los problemas simples `LOCAL-001` a `LOCAL-010`. Cada ficha declara objetivo, rama `agent/local-*`, commit esperado, archivos/superficies permitidas, gates obligatorios y senales prohibidas.
+
+Reglas fijas del modo LOCAL:
+
+- un problema LOCAL equivale a un microciclo separado;
+- la rama se prepara localmente y requiere proyecto limpio;
+- el commit solo se crea en la rama segura del problema;
+- antes del commit se validan archivos tocados, senales prohibidas y gates declarados;
+- no hay push automatico;
+- se bloquea si aparece endpoint, tabla, ruta, permisos nuevos, IA nueva, RAG, receta, firma o dashboard.
+
+Flujo recomendado:
+
+```bash
+npm run agent -- local-problem-plan "<OneEpis>" --problem LOCAL-003
+npm run agent -- local-problem-prepare "<OneEpis>" --problem LOCAL-003
+# el agente local realiza el refactor permitido en la rama segura
+npm run agent -- local-problem-commit "<OneEpis>" --problem LOCAL-003
+```
+
+La interfaz muestra la pestana `LOCAL` con selector de problema, plan, preparacion de rama y resultado de commit local.
 
 ## Configuracion
 
@@ -172,6 +200,8 @@ Estado actual:
 - `EvolutionPlan` con candidato seleccionado, ranking puntuado, dimensiones, veredicto, bloqueos, warnings y frontera local sin escritura.
 - `AgentRunReport` con Markdown revisable para PR y microprocesos cerrados.
 - `ApplyReadiness` para prevalidar apply v0.3 sin escribir: token requerido, rama segura, checks, bloqueos y siguientes acciones.
+- Catalogo `LOCAL-001..LOCAL-010` para microciclos de dieta/refactor simple en OneEpis.
+- `LocalProblemPlan`, preparacion de rama `agent/local-*` y commit local gobernado sin push automatico.
 - Gates declarados por `package.json`.
 - Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.

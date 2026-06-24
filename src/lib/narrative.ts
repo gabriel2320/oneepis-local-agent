@@ -187,8 +187,11 @@ export function explainStatus(status: string) {
     skipped: "omitido",
     passed: "paso",
     approved: "aprobado",
+    ready: "listo",
+    ready_for_changes: "rama preparada",
     ready_for_confirmation: "listo para confirmacion",
     ready_to_apply: "listo para aplicar cambios",
+    committed: "commit local creado",
   };
   return labels[status] ?? status;
 }

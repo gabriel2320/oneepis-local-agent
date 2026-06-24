@@ -5,13 +5,14 @@ use agent::brief;
 use agent::context_pack;
 use agent::evolution;
 use agent::gates;
+use agent::local_problems;
 use agent::ollama;
 use agent::patch;
 use agent::persistence;
 use agent::readiness;
 use agent::repo;
 use agent::runner;
-use agent::types::{ApplyPatchRequest, PatchDraft, RunRequest};
+use agent::types::{ApplyPatchRequest, LocalProblemRequest, PatchDraft, RunRequest};
 use agent::work_package;
 use std::fs;
 
@@ -130,6 +131,39 @@ async fn run() -> Result<(), String> {
             let limit = option_value(&args, "--limit").and_then(|value| value.parse::<i64>().ok());
             print_json(&persistence::list_runs(None, limit).await?)?;
         }
+        "local-problems" => {
+            print_json(&local_problems::list_local_problems())?;
+        }
+        "local-problem-plan" => {
+            let repo_path = required_repo(&args)?;
+            let problem_id = required_option(&args, "--problem")?;
+            print_json(&local_problems::local_problem_plan(LocalProblemRequest {
+                repo_path: repo_path.to_string(),
+                problem_id: problem_id.to_string(),
+            })?)?;
+        }
+        "local-problem-prepare" => {
+            let repo_path = required_repo(&args)?;
+            let problem_id = required_option(&args, "--problem")?;
+            print_json(
+                &local_problems::prepare_local_problem(LocalProblemRequest {
+                    repo_path: repo_path.to_string(),
+                    problem_id: problem_id.to_string(),
+                })
+                .await?,
+            )?;
+        }
+        "local-problem-commit" => {
+            let repo_path = required_repo(&args)?;
+            let problem_id = required_option(&args, "--problem")?;
+            print_json(
+                &local_problems::commit_local_problem(LocalProblemRequest {
+                    repo_path: repo_path.to_string(),
+                    problem_id: problem_id.to_string(),
+                })
+                .await?,
+            )?;
+        }
         "run" => {
             let repo_path = required_repo(&args)?;
             let max_cycles = option_value(&args, "--max-cycles")
@@ -206,6 +240,10 @@ fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
         .map(|window| window[1].as_str())
 }
 
+fn required_option<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
+    option_value(args, name).ok_or_else(|| format!("Falta opcion requerida {name}."))
+}
+
 fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
     let text = serde_json::to_string_pretty(value)
         .map_err(|err| format!("No se pudo serializar JSON: {err}"))?;
@@ -215,7 +253,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent evolution-plan <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent evolution-plan <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent local-problems | agent local-problem-plan <repo> --problem LOCAL-001 | agent local-problem-prepare <repo> --problem LOCAL-001 | agent local-problem-commit <repo> --problem LOCAL-001 | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
             .to_string(),
     )
 }

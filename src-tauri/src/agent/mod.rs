@@ -3,6 +3,7 @@ pub mod context_pack;
 pub mod evolution;
 pub mod gates;
 pub mod governance;
+pub mod local_problems;
 pub mod ollama;
 pub mod patch;
 pub mod persistence;
