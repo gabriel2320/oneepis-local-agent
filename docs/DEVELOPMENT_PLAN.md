@@ -26,6 +26,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Provide `DevelopmentReadiness` before planning: repo readiness, Ollama/model health, required gates, blockers, next actions, and suggested microcycles.
 - Provide `DevelopmentWorkPackage` for a selected objective: files to inspect, implementation steps, test plan, acceptance criteria, stop conditions, gates, and branch strategy.
 - Provide `DevelopmentContextPack` for the selected objective: bounded local snippets, directory summaries, sanitization warnings, prompt notes, and gates for Ollama-only programming.
+- Provide `DevelopmentBrief` between context and patch: governed system/user prompts, JSON response contract, stop conditions, and optional local Ollama proposal.
 
 ### v0.3 Controlled Execution
 
@@ -48,6 +49,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Translate technical states such as `completed`, `blocked`, `passed`, and `failed` into Spanish labels.
 - Keep the first screen operational with repo, objective, cycle controls, blockers, and natural-language agent status.
 - Show context packs with wrapping cards, explicit omissions, byte budgets, and notes that tell the local model how to use the context.
+- Show local briefs with the exact prompts, expected response schema, proposal summary, risks, gates, and no-apply guardrail.
 
 ### v0.5 Local Distribution
 
@@ -65,6 +67,9 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `DevelopmentReadiness`: Spanish readiness report for local OneEpis programming with checks, blockers, warnings, next actions, required gates, model summary, and suggested microcycles.
 - `DevelopmentWorkPackage`: executable planning contract for one local programming microcycle, including tests and acceptance criteria.
 - `DevelopmentContextPack`: read-only local context contract with proposed files, sanitized excerpts, directory summaries, skipped/missing paths, prompt notes, gates, and byte budget.
+- `DevelopmentBrief`: read-only local model work order with prompts, response contract, context files, next actions, stop conditions, and optional `LocalModelProposal`.
+- `LocalModelProposal`: Ollama-only structured suggestion with summary, files to change, implementation notes, risks, gates, raw sanitized response, and model used.
+- Proposals that mention files outside the governed context or gates outside the package become `needs_review`, not an approved path to PatchDraft.
 
 ## Governed Power
 
@@ -74,12 +79,13 @@ The agent may become more useful without becoming unbounded. Extra power must fo
 2. Produce a readiness diagnosis with blockers, warnings, gates, model health, and suggested microcycles.
 3. Produce a work package with files, steps, tests, acceptance criteria, and stop conditions.
 4. Produce a context pack with bounded, sanitized local snippets for Ollama.
-5. Produce a microplan with risk, surfaces, gates, and warnings.
-6. Produce a `PatchDraft` without writing target files.
-7. Review the draft with deterministic safety checks.
-8. Run only declared gates from `package.json`.
-9. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
-10. Never push automatically.
+5. Produce a brief/proposal for the local model without writing target files.
+6. Produce a microplan with risk, surfaces, gates, and warnings.
+7. Produce a `PatchDraft` without writing target files.
+8. Review the draft with deterministic safety checks.
+9. Run only declared gates from `package.json`.
+10. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
+11. Never push automatically.
 
 ## Gates
 
@@ -96,4 +102,5 @@ Target repo gates are only run when they are declared in the target `package.jso
 - Every code change to this agent should land through a branch and pull request.
 - Every PR should document the closed microprocess it exercised: objective, preflight result, PatchDraft/review state, gate result, and stop condition.
 - When a PR changes agent behavior, include the context-pack result or explain why no context pack was needed.
+- If the local model is invoked, include the brief/proposal status and the model used.
 - A blocked target repo is still a valid microprocess result when the block is explained and no target files are changed.

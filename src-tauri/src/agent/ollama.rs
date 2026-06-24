@@ -1,4 +1,7 @@
-use crate::agent::types::{MicroPlan, ModelPolicy, OllamaModel, OllamaStatus, RepoInspection};
+use crate::agent::safety::sanitize_log;
+use crate::agent::types::{
+    LocalModelProposal, MicroPlan, ModelPolicy, OllamaModel, OllamaStatus, RepoInspection,
+};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -157,6 +160,68 @@ pub async fn ask_for_micro_plan(
     Some(plan)
 }
 
+pub async fn ask_for_development_proposal(
+    base_url: Option<String>,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> LocalModelProposal {
+    let status = match get_ollama_status(base_url.clone()).await {
+        Ok(status) if status.available => status,
+        Ok(status) => {
+            return unavailable_proposal("ollama_unavailable", &status.message);
+        }
+        Err(err) => {
+            return unavailable_proposal("ollama_error", &err);
+        }
+    };
+    let model = choose_coding_model(&status);
+    let client = Client::new();
+    let response = client
+        .post(format!("{}/api/chat", status.base_url))
+        .json(&json!({
+            "model": model,
+            "stream": false,
+            "think": false,
+            "format": "json",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt
+                }
+            ],
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 900
+            }
+        }))
+        .send()
+        .await;
+
+    let Ok(response) = response else {
+        return unavailable_proposal("ollama_request_failed", "No se pudo consultar Ollama.");
+    };
+    if !response.status().is_success() {
+        return unavailable_proposal(
+            "ollama_http_error",
+            &format!("Ollama respondio con HTTP {}.", response.status()),
+        );
+    }
+    let chat = match response.json::<ChatResponse>().await {
+        Ok(chat) => chat,
+        Err(err) => {
+            return unavailable_proposal(
+                "ollama_parse_error",
+                &format!("No se pudo leer respuesta de Ollama: {err}."),
+            );
+        }
+    };
+    parse_development_proposal_content(&chat.message.content, &model)
+}
+
 fn parse_plan_content(content: &str) -> Option<MicroPlan> {
     let value = serde_json::from_str::<Value>(content).ok()?;
     let candidate = value.get("plan").cloned().unwrap_or(value);
@@ -224,6 +289,53 @@ fn parse_plan_content(content: &str) -> Option<MicroPlan> {
         blocked,
         model_used: String::new(),
     })
+}
+
+fn parse_development_proposal_content(content: &str, model: &str) -> LocalModelProposal {
+    let sanitized = sanitize_log(content);
+    let value = serde_json::from_str::<Value>(&sanitized).unwrap_or(Value::Null);
+    let candidate = value.get("proposal").cloned().unwrap_or(value);
+    let summary = candidate
+        .get("summary")
+        .and_then(Value::as_str)
+        .unwrap_or("Propuesta local sin resumen estructurado.")
+        .to_string();
+    let files_to_change = string_list(
+        candidate
+            .get("filesToChange")
+            .or_else(|| candidate.get("files_to_change")),
+    );
+    let implementation_notes = string_list(
+        candidate
+            .get("implementationNotes")
+            .or_else(|| candidate.get("implementation_notes")),
+    );
+    let risks = string_list(candidate.get("risks"));
+    let gates = string_list(candidate.get("gates"));
+
+    LocalModelProposal {
+        status: "proposed".to_string(),
+        model_used: model.to_string(),
+        summary,
+        files_to_change,
+        implementation_notes,
+        risks,
+        gates,
+        raw_response: sanitized,
+    }
+}
+
+fn unavailable_proposal(status: &str, summary: &str) -> LocalModelProposal {
+    LocalModelProposal {
+        status: status.to_string(),
+        model_used: "none".to_string(),
+        summary: sanitize_log(summary),
+        files_to_change: Vec::new(),
+        implementation_notes: Vec::new(),
+        risks: vec!["Sin propuesta de modelo local; usar brief determinista.".to_string()],
+        gates: Vec::new(),
+        raw_response: String::new(),
+    }
 }
 
 fn string_list(value: Option<&Value>) -> Vec<String> {
@@ -294,5 +406,63 @@ fn choose_planning_model(status: &OllamaStatus) -> String {
             .first()
             .map(|model| model.name.clone())
             .unwrap_or_else(|| status.policy.fallback.clone())
+    }
+}
+
+fn choose_coding_model(status: &OllamaStatus) -> String {
+    let available: BTreeSet<&str> = status
+        .models
+        .iter()
+        .map(|model| model.name.as_str())
+        .collect();
+    if available.contains(status.policy.primary_code.as_str()) {
+        status.policy.primary_code.clone()
+    } else if available.contains(status.policy.fast_code.as_str()) {
+        status.policy.fast_code.clone()
+    } else if available.contains(status.policy.governance.as_str()) {
+        status.policy.governance.clone()
+    } else if available.contains(status.policy.fallback.as_str()) {
+        status.policy.fallback.clone()
+    } else {
+        status
+            .models
+            .first()
+            .map(|model| model.name.clone())
+            .unwrap_or_else(|| status.policy.fallback.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_development_proposal_json_contract() {
+        let proposal = parse_development_proposal_content(
+            r#"{
+                "summary": "Extraer regla pequena",
+                "filesToChange": ["apps/api/src/service.py"],
+                "implementationNotes": ["Mover funcion pura"],
+                "risks": ["Archivo near-limit"],
+                "gates": ["check:size"]
+            }"#,
+            "qwen3:8b",
+        );
+
+        assert_eq!(proposal.status, "proposed");
+        assert_eq!(proposal.model_used, "qwen3:8b");
+        assert!(proposal
+            .files_to_change
+            .contains(&"apps/api/src/service.py".to_string()));
+        assert!(proposal.gates.contains(&"check:size".to_string()));
+    }
+
+    #[test]
+    fn unavailable_proposal_is_safe_fallback() {
+        let proposal = unavailable_proposal("ollama_unavailable", "token=abc");
+
+        assert_eq!(proposal.status, "ollama_unavailable");
+        assert!(proposal.summary.contains("[REDACTED]"));
+        assert!(proposal.files_to_change.is_empty());
     }
 }

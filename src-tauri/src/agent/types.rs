@@ -165,6 +165,39 @@ pub struct DevelopmentContextPack {
     pub max_bytes: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalModelProposal {
+    pub status: String,
+    pub model_used: String,
+    pub summary: String,
+    pub files_to_change: Vec<String>,
+    pub implementation_notes: Vec<String>,
+    pub risks: Vec<String>,
+    pub gates: Vec<String>,
+    pub raw_response: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevelopmentBrief {
+    pub repo_path: String,
+    pub objective: String,
+    pub status: String,
+    pub summary: String,
+    pub model_used: String,
+    pub work_order: String,
+    pub system_prompt: String,
+    pub user_prompt: String,
+    pub response_contract: Vec<String>,
+    pub context_files: Vec<String>,
+    pub gates: Vec<String>,
+    pub warnings: Vec<String>,
+    pub stop_conditions: Vec<String>,
+    pub next_actions: Vec<String>,
+    pub proposal: Option<LocalModelProposal>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MicroPlan {

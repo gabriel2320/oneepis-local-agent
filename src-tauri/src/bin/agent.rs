@@ -1,6 +1,7 @@
 #[path = "../agent/mod.rs"]
 mod agent;
 
+use agent::brief;
 use agent::context_pack;
 use agent::gates;
 use agent::ollama;
@@ -50,6 +51,13 @@ async fn run() -> Result<(), String> {
             let objective = option_value(&args, "--objective")
                 .unwrap_or("Preparar contexto local gobernado para OneEpis.");
             print_json(&context_pack::development_context_pack(repo_path, objective, None).await?)?;
+        }
+        "brief" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Preparar brief local gobernado para OneEpis.");
+            let ask_model = args.iter().any(|arg| arg == "--ask-model");
+            print_json(&brief::development_brief(repo_path, objective, ask_model, None).await?)?;
         }
         "plan" => {
             let repo_path = required_repo(&args)?;
@@ -156,7 +164,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
             .to_string(),
     )
 }

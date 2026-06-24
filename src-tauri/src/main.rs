@@ -1,5 +1,6 @@
 mod agent;
 
+use agent::brief;
 use agent::context_pack;
 use agent::gates;
 use agent::ollama;
@@ -9,9 +10,9 @@ use agent::readiness;
 use agent::repo;
 use agent::runner;
 use agent::types::{
-    AgentRun, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, DevelopmentContextPack,
-    DevelopmentReadiness, DevelopmentWorkPackage, GateResult, MicroPlan, OllamaStatus, PatchDraft,
-    PatchReview, RepoInspection, RunRequest,
+    AgentRun, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, DevelopmentBrief,
+    DevelopmentContextPack, DevelopmentReadiness, DevelopmentWorkPackage, GateResult, MicroPlan,
+    OllamaStatus, PatchDraft, PatchReview, RepoInspection, RunRequest,
 };
 use agent::work_package;
 
@@ -49,6 +50,16 @@ async fn development_context_pack(
     base_url: Option<String>,
 ) -> Result<DevelopmentContextPack, String> {
     context_pack::development_context_pack(&repo_path, &objective, base_url).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn development_brief(
+    repo_path: String,
+    objective: String,
+    ask_model: Option<bool>,
+    base_url: Option<String>,
+) -> Result<DevelopmentBrief, String> {
+    brief::development_brief(&repo_path, &objective, ask_model.unwrap_or(false), base_url).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -111,6 +122,7 @@ fn main() {
             development_readiness,
             development_work_package,
             development_context_pack,
+            development_brief,
             plan_microcycle,
             run_microcycle,
             draft_patch,

@@ -122,6 +122,35 @@ export type DevelopmentContextPack = {
   maxBytes: number;
 };
 
+export type LocalModelProposal = {
+  status: string;
+  modelUsed: string;
+  summary: string;
+  filesToChange: string[];
+  implementationNotes: string[];
+  risks: string[];
+  gates: string[];
+  rawResponse: string;
+};
+
+export type DevelopmentBrief = {
+  repoPath: string;
+  objective: string;
+  status: "ready" | "partial" | "blocked" | string;
+  summary: string;
+  modelUsed: string;
+  workOrder: string;
+  systemPrompt: string;
+  userPrompt: string;
+  responseContract: string[];
+  contextFiles: string[];
+  gates: string[];
+  warnings: string[];
+  stopConditions: string[];
+  nextActions: string[];
+  proposal?: LocalModelProposal | null;
+};
+
 export type MicroPlan = {
   objective: string;
   recommendedGate: string;

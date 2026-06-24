@@ -1,5 +1,6 @@
 import type {
   AgentRun,
+  DevelopmentBrief,
   GateResult,
   DevelopmentContextPack,
   MicroPlan,
@@ -26,6 +27,7 @@ export type NarrativeInput = {
   ollama: OllamaStatus | null;
   plan: MicroPlan | null;
   contextPack: DevelopmentContextPack | null;
+  brief: DevelopmentBrief | null;
   draft: PatchDraft | null;
   review: PatchReview | null;
   gateResult: GateResult | null;
@@ -84,6 +86,19 @@ export function buildAgentNarrative(input: NarrativeInput): AgentNarrative {
       tone: passed ? "success" : "danger",
       checklist: [input.gateResult.summary],
       power: "Puedo ejecutar gates declarados por package.json, no comandos libres.",
+    };
+  }
+
+  if (input.brief) {
+    const proposed = input.brief.proposal?.status === "proposed";
+    return {
+      headline: proposed ? "El modelo local propuso un camino revisable." : "El brief local esta listo para revision.",
+      body: `${input.brief.contextFiles.length} entradas de contexto; modelo ${input.brief.modelUsed}.`,
+      nextAction: proposed ? "Revisar propuesta y convertir una sola decision en PatchDraft." : input.brief.nextActions[0] ?? "Pedir propuesta al modelo local.",
+      guardrail: "El brief no aplica cambios: solo orienta a Ollama y conserva gates, riesgos y parada.",
+      tone: input.brief.status === "blocked" ? "warning" : proposed ? "success" : "neutral",
+      checklist: input.brief.responseContract,
+      power: "Puedo convertir contexto gobernado en una orden de trabajo para IA local sin abrir shell ni escritura.",
     };
   }
 
@@ -204,6 +219,15 @@ function busyNarrative(busy: string): AgentNarrative {
       tone: "neutral",
       checklist: ["paquete de trabajo", "rutas seguras", "extractos sanitizados", "gates"],
       power: "Puedo darle al modelo local contexto suficiente sin abrir todo el repo.",
+    },
+    brief: {
+      headline: "Estoy preparando el brief para el modelo local.",
+      body: "Convierto paquete y contexto en una orden de trabajo gobernada para Ollama.",
+      nextAction: "Revisar prompt, contrato de respuesta y propuesta si el modelo responde.",
+      guardrail: "El brief no escribe archivos ni sustituye PatchDraft/revision.",
+      tone: "neutral",
+      checklist: ["contexto", "prompt", "contrato JSON", "gates"],
+      power: "Puedo pedir una propuesta local estructurada sin dar permisos de apply.",
     },
     draft: {
       headline: "Estoy preparando un PatchDraft.",

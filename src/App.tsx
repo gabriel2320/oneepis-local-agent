@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   draftPatch,
+  getDevelopmentBrief,
   getDevelopmentContextPack,
   getDevelopmentReadiness,
   getDevelopmentWorkPackage,
@@ -33,6 +34,7 @@ import {
 import type {
   AgentRun,
   AgentRunSummary,
+  DevelopmentBrief,
   DevelopmentContextPack,
   DevelopmentReadiness,
   DevelopmentWorkPackage,
@@ -51,7 +53,7 @@ import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "preparacion", "paquete", "contexto", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "paquete", "contexto", "brief", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -65,6 +67,7 @@ const initialMicroSteps: MicroStep[] = [
   { id: "inspect", label: "Inspeccion", status: "pending", detail: "Sin ejecutar." },
   { id: "plan", label: "Plan", status: "pending", detail: "Sin ejecutar." },
   { id: "context", label: "Contexto", status: "pending", detail: "Sin ejecutar." },
+  { id: "brief", label: "Brief", status: "pending", detail: "Sin ejecutar." },
   { id: "draft", label: "PatchDraft", status: "pending", detail: "Sin ejecutar." },
   { id: "run", label: "Dry-run", status: "pending", detail: "Sin ejecutar." },
   { id: "gate", label: "Gate", status: "pending", detail: "Sin ejecutar." },
@@ -79,6 +82,7 @@ function App() {
   const [readiness, setReadiness] = useState<DevelopmentReadiness | null>(null);
   const [workPackage, setWorkPackage] = useState<DevelopmentWorkPackage | null>(null);
   const [contextPack, setContextPack] = useState<DevelopmentContextPack | null>(null);
+  const [brief, setBrief] = useState<DevelopmentBrief | null>(null);
   const [plan, setPlan] = useState<MicroPlan | null>(null);
   const [draft, setDraft] = useState<PatchDraft | null>(null);
   const [review, setReview] = useState<PatchReview | null>(null);
@@ -103,8 +107,8 @@ function App() {
     ...(ollama?.missingPolicyModels.length ? [`Faltan modelos: ${ollama.missingPolicyModels.join(", ")}`] : []),
   ];
   const narrative = useMemo(
-    () => buildAgentNarrative({ inspection, ollama, plan, contextPack, draft, review, gateResult, run, blockers, busy }),
-    [inspection, ollama, plan, contextPack, draft, review, gateResult, run, blockers, busy],
+    () => buildAgentNarrative({ inspection, ollama, plan, contextPack, brief, draft, review, gateResult, run, blockers, busy }),
+    [inspection, ollama, plan, contextPack, brief, draft, review, gateResult, run, blockers, busy],
   );
 
   async function loadAll() {
@@ -187,6 +191,20 @@ function App() {
     }
   }
 
+  async function createBrief() {
+    setBusy("brief");
+    setError(null);
+    try {
+      const nextBrief = await getDevelopmentBrief(repoPath, objective, true);
+      setBrief(nextBrief);
+      setActiveTab("brief");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function runDryCycle() {
     setBusy("run");
     setError(null);
@@ -231,6 +249,11 @@ function App() {
       const nextContext = await getDevelopmentContextPack(repoPath, objective);
       setContextPack(nextContext);
       markMicroStep("context", nextContext.status === "blocked" ? "blocked" : "completed", `${nextContext.files.length} entradas; ${nextContext.totalBytes}/${nextContext.maxBytes} bytes.`);
+
+      markMicroStep("brief", "running", "Preparando brief para modelo local.");
+      const nextBrief = await getDevelopmentBrief(repoPath, objective, true);
+      setBrief(nextBrief);
+      markMicroStep("brief", nextBrief.status === "blocked" ? "blocked" : "completed", nextBrief.proposal?.summary ?? nextBrief.summary);
 
       markMicroStep("draft", "running", "Preparando PatchDraft revisable.");
       const nextDraft = await draftPatch(repoPath, objective);
@@ -386,6 +409,10 @@ function App() {
                   <BookOpenCheck className="mr-2 h-4 w-4" />
                   {busy === "contextPack" ? "Contexto..." : "Contexto"}
                 </Button>
+                <Button variant="secondary" onClick={createBrief} disabled={busy !== null}>
+                  <Bot className="mr-2 h-4 w-4" />
+                  {busy === "brief" ? "Brief..." : "Brief IA"}
+                </Button>
                 <Button variant="secondary" onClick={runDryCycle} disabled={busy !== null}>
                   <Play className="mr-2 h-4 w-4" />
                   {busy === "run" ? "Ejecutando..." : "Dry-run"}
@@ -411,6 +438,7 @@ function App() {
         {activeTab === "preparacion" && <ReadinessTab readiness={readiness} />}
         {activeTab === "paquete" && <WorkPackageTab workPackage={workPackage} />}
         {activeTab === "contexto" && <ContextPackTab contextPack={contextPack} />}
+        {activeTab === "brief" && <BriefTab brief={brief} />}
         {activeTab === "microproceso" && <MicroProcessTab steps={microSteps} run={run} gateResult={gateResult} />}
         {activeTab === "plan" && <PlanTab plan={plan} />}
         {activeTab === "patch" && <PatchTab draft={draft} review={review} />}
@@ -694,6 +722,66 @@ function ContextPackTab({ contextPack }: { contextPack: DevelopmentContextPack |
   );
 }
 
+function BriefTab({ brief }: { brief: DevelopmentBrief | null }) {
+  if (!brief) return <Empty text="Sin brief local. Presiona Brief IA para preparar una orden de trabajo gobernada." />;
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Brief Local" description="Orden de trabajo para Ollama; no aplica cambios ni reemplaza PatchDraft.">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={contextPackTone(brief.status)}>{contextPackStatusLabel(brief.status)}</Badge>
+          <Badge>{brief.modelUsed}</Badge>
+          <Badge>{brief.contextFiles.length} entradas</Badge>
+        </div>
+        <p className="mt-3 text-sm leading-6 break-words">{brief.summary}</p>
+        <HelpText label="Orden de trabajo" value={brief.workOrder} />
+        {brief.proposal ? (
+          <div className="mt-3 rounded border border-border bg-background px-3 py-2 text-sm">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={brief.proposal.status === "proposed" ? "success" : "warning"}>{brief.proposal.status}</Badge>
+              <Badge>{brief.proposal.modelUsed}</Badge>
+            </div>
+            <p className="mt-2 font-medium break-words">{brief.proposal.summary}</p>
+            <List items={brief.proposal.filesToChange.map((file) => `Archivo sugerido: ${file}`)} />
+            <List items={brief.proposal.implementationNotes} />
+            <List items={brief.proposal.risks} tone="warning" />
+            <List items={brief.proposal.gates.map((gate) => `Gate sugerido: ${gate}`)} />
+          </div>
+        ) : (
+          <Empty text="Sin propuesta del modelo local; el brief determinista queda disponible." />
+        )}
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold">Contrato de respuesta</h4>
+            <List items={brief.responseContract} />
+          </div>
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold">Contexto usado</h4>
+            <List items={brief.contextFiles} />
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Prompts" description="Texto enviado al modelo local cuando se pide propuesta.">
+          <h4 className="text-xs font-semibold text-muted-foreground">Sistema</h4>
+          <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
+            {brief.systemPrompt}
+          </pre>
+          <h4 className="mt-3 text-xs font-semibold text-muted-foreground">Usuario</h4>
+          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 text-xs text-muted-foreground">
+            {brief.userPrompt}
+          </pre>
+        </Card>
+        <Card title="Parada Y Siguientes Pasos" description="Nada de esto concede apply.">
+          <List items={brief.nextActions} />
+          <List items={brief.stopConditions} tone="warning" />
+          <List items={brief.warnings} tone="warning" />
+        </Card>
+      </div>
+    </section>
+  );
+}
+
 function PlanTab({ plan }: { plan: MicroPlan | null }) {
   if (!plan) return <Empty text="Sin microplan." />;
   return (
@@ -873,6 +961,7 @@ function tabLabel(tab: Tab) {
     preparacion: "Preparacion",
     paquete: "Paquete",
     contexto: "Contexto",
+    brief: "Brief",
     microproceso: "Microproceso",
     plan: "Plan",
     patch: "Patch",
