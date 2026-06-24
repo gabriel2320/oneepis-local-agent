@@ -4,6 +4,7 @@ import type {
   AgentRunSummary,
   ApplyPatchRequest,
   ApplyPatchResult,
+  DevelopmentContextPack,
   DevelopmentReadiness,
   DevelopmentWorkPackage,
   GateResult,
@@ -28,6 +29,10 @@ export function getDevelopmentReadiness(repoPath: string, baseUrl?: string) {
 
 export function getDevelopmentWorkPackage(repoPath: string, objective: string, baseUrl?: string) {
   return invoke<DevelopmentWorkPackage>("development_work_package", { repoPath, objective, baseUrl });
+}
+
+export function getDevelopmentContextPack(repoPath: string, objective: string, baseUrl?: string) {
+  return invoke<DevelopmentContextPack>("development_context_pack", { repoPath, objective, baseUrl });
 }
 
 export function planMicrocycle(repoPath: string, objective: string, baseUrl?: string) {

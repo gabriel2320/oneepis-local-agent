@@ -33,6 +33,7 @@ El agente local puede actuar con mas poder solo dentro de estos limites:
 - inspeccionar repo, Git, gobernanza, Ollama, gates y bitacora;
 - diagnosticar preparacion local con bloqueos, warnings, gates requeridos, salud de modelos y microciclos sugeridos;
 - crear paquete de trabajo con archivos a inspeccionar, pasos, plan de pruebas, criterios de aceptacion y condiciones de parada;
+- crear context pack local de solo lectura con extractos sanitizados, limites de bytes, omisiones explicitas y notas para Ollama;
 - producir microplan con riesgo, superficies, gates y warnings;
 - producir `PatchDraft` revisable sin escritura real;
 - revisar drafts con checks deterministas;
@@ -40,6 +41,8 @@ El agente local puede actuar con mas poder solo dentro de estos limites:
 - preparar apply controlado solo desde v0.3, con repo limpio, rama segura, token humano y riesgo no rojo.
 
 No puede hacer push automatico, ampliar alcance para destrabar su propio plan ni ejecutar comandos no tipados.
+
+El context pack no autoriza escritura: si hay repo sucio, ruta sensible, archivo enorme, PHI probable o contexto insuficiente, debe mostrar warning y pedir un microciclo mas pequeno.
 
 ## Lenguaje Natural
 

@@ -1,6 +1,7 @@
 #[path = "../agent/mod.rs"]
 mod agent;
 
+use agent::context_pack;
 use agent::gates;
 use agent::ollama;
 use agent::patch;
@@ -43,6 +44,12 @@ async fn run() -> Result<(), String> {
             let objective = option_value(&args, "--objective")
                 .unwrap_or("Preparar paquete de trabajo gobernado para OneEpis.");
             print_json(&work_package::development_work_package(repo_path, objective, None).await?)?;
+        }
+        "context-pack" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Preparar contexto local gobernado para OneEpis.");
+            print_json(&context_pack::development_context_pack(repo_path, objective, None).await?)?;
         }
         "plan" => {
             let repo_path = required_repo(&args)?;
@@ -149,7 +156,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
             .to_string(),
     )
 }

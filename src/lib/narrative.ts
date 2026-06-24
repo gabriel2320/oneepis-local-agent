@@ -1,6 +1,7 @@
 import type {
   AgentRun,
   GateResult,
+  DevelopmentContextPack,
   MicroPlan,
   OllamaStatus,
   PatchDraft,
@@ -24,6 +25,7 @@ export type NarrativeInput = {
   inspection: RepoInspection | null;
   ollama: OllamaStatus | null;
   plan: MicroPlan | null;
+  contextPack: DevelopmentContextPack | null;
   draft: PatchDraft | null;
   review: PatchReview | null;
   gateResult: GateResult | null;
@@ -82,6 +84,19 @@ export function buildAgentNarrative(input: NarrativeInput): AgentNarrative {
       tone: passed ? "success" : "danger",
       checklist: [input.gateResult.summary],
       power: "Puedo ejecutar gates declarados por package.json, no comandos libres.",
+    };
+  }
+
+  if (input.contextPack) {
+    const ready = input.contextPack.status === "ready";
+    return {
+      headline: ready ? "El contexto local esta listo para el modelo." : "El contexto local necesita revision.",
+      body: `${input.contextPack.files.length} entradas, ${input.contextPack.totalBytes}/${input.contextPack.maxBytes} bytes sanitizados.`,
+      nextAction: ready ? "Crear PatchDraft revisable con ese contexto acotado." : input.contextPack.warnings[0] ?? "Reducir el contexto antes de crear PatchDraft.",
+      guardrail: "El context pack es solo lectura, no contiene secretos conocidos y no habilita apply por si solo.",
+      tone: ready ? "success" : "warning",
+      checklist: input.contextPack.promptNotes,
+      power: "Puedo preparar memoria de trabajo local para programar con Ollama sin salir de gobernanza.",
     };
   }
 
@@ -180,6 +195,15 @@ function busyNarrative(busy: string): AgentNarrative {
       tone: "neutral",
       checklist: ["riesgo", "superficies", "gates", "warnings"],
       power: "Puedo adaptar el plan a la doctrina OneEpis.",
+    },
+    contextPack: {
+      headline: "Estoy preparando contexto local.",
+      body: "Leo solo rutas del paquete de trabajo, omito secretos y limito bytes para el modelo local.",
+      nextAction: "Revisar archivos incluidos, warnings y notas de prompt.",
+      guardrail: "Esta etapa no escribe en OneEpis ni sustituye la revision humana.",
+      tone: "neutral",
+      checklist: ["paquete de trabajo", "rutas seguras", "extractos sanitizados", "gates"],
+      power: "Puedo darle al modelo local contexto suficiente sin abrir todo el repo.",
     },
     draft: {
       headline: "Estoy preparando un PatchDraft.",

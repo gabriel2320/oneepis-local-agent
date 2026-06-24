@@ -43,6 +43,7 @@ CLI del agente:
 npm run agent -- inspect "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- readiness "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- work-package "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Reducir un archivo clinico near-limit"
+npm run agent -- context-pack "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Reducir un archivo clinico near-limit"
 npm run agent -- ollama
 npm run agent -- plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Auditar siguiente microciclo"
 npm run agent -- draft "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Preparar PatchDraft"
@@ -128,12 +129,13 @@ La pantalla principal mantiene una voz operativa del agente:
 - muestra la baranda de gobernanza que limita la accion;
 - resume que poder local puede usar en ese punto del ciclo;
 - evita esconder el detalle tecnico: plan, PatchDraft, revision, gates y bitacora siguen visibles.
+- muestra contexto local sanitizado: archivos incluidos, omisiones, presupuesto de bytes y notas para el modelo Ollama.
 
 Este sistema no aumenta permisos por fuera de gobernanza. Da mas claridad y coordina mejor los ciclos cerrados:
 
 ```text
-inspeccionar -> planificar -> preparar PatchDraft -> revisar safety
--> ejecutar gate declarado -> registrar resultado -> detener
+inspeccionar -> paquete -> contexto -> planificar -> preparar PatchDraft
+-> revisar safety -> ejecutar gate declarado -> registrar resultado -> detener
 ```
 
 ## Roadmap
@@ -150,6 +152,7 @@ Estado actual:
 - Revision deterministica de drafts.
 - Diagnostico `DevelopmentReadiness` con bloqueos, warnings, acciones siguientes y microciclos sugeridos.
 - `DevelopmentWorkPackage` con archivos a inspeccionar, pasos, plan de pruebas, criterios de aceptacion y condiciones de parada.
+- `DevelopmentContextPack` con extractos locales sanitizados, limites de bytes, warnings, gates y notas de prompt para Ollama.
 - Gates declarados por `package.json`.
 - Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.

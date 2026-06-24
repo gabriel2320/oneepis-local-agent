@@ -99,6 +99,29 @@ export type DevelopmentWorkPackage = {
   canApply: boolean;
 };
 
+export type ContextPackFile = {
+  path: string;
+  kind: "file" | "directory" | "missing" | "skipped" | string;
+  bytes: number;
+  lines: number;
+  sha256: string;
+  summary: string;
+  excerpt: string;
+};
+
+export type DevelopmentContextPack = {
+  repoPath: string;
+  objective: string;
+  status: "ready" | "partial" | "blocked" | string;
+  summary: string;
+  files: ContextPackFile[];
+  warnings: string[];
+  promptNotes: string[];
+  gates: string[];
+  totalBytes: number;
+  maxBytes: number;
+};
+
 export type MicroPlan = {
   objective: string;
   recommendedGate: string;

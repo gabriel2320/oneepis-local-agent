@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Activity,
+  BookOpenCheck,
   Bot,
   BrainCircuit,
   CheckCircle2,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   draftPatch,
+  getDevelopmentContextPack,
   getDevelopmentReadiness,
   getDevelopmentWorkPackage,
   getOllamaStatus,
@@ -31,6 +33,7 @@ import {
 import type {
   AgentRun,
   AgentRunSummary,
+  DevelopmentContextPack,
   DevelopmentReadiness,
   DevelopmentWorkPackage,
   GateResult,
@@ -48,7 +51,7 @@ import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "preparacion", "paquete", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "paquete", "contexto", "microproceso", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -61,6 +64,7 @@ type MicroStep = {
 const initialMicroSteps: MicroStep[] = [
   { id: "inspect", label: "Inspeccion", status: "pending", detail: "Sin ejecutar." },
   { id: "plan", label: "Plan", status: "pending", detail: "Sin ejecutar." },
+  { id: "context", label: "Contexto", status: "pending", detail: "Sin ejecutar." },
   { id: "draft", label: "PatchDraft", status: "pending", detail: "Sin ejecutar." },
   { id: "run", label: "Dry-run", status: "pending", detail: "Sin ejecutar." },
   { id: "gate", label: "Gate", status: "pending", detail: "Sin ejecutar." },
@@ -74,6 +78,7 @@ function App() {
   const [ollama, setOllama] = useState<OllamaStatus | null>(null);
   const [readiness, setReadiness] = useState<DevelopmentReadiness | null>(null);
   const [workPackage, setWorkPackage] = useState<DevelopmentWorkPackage | null>(null);
+  const [contextPack, setContextPack] = useState<DevelopmentContextPack | null>(null);
   const [plan, setPlan] = useState<MicroPlan | null>(null);
   const [draft, setDraft] = useState<PatchDraft | null>(null);
   const [review, setReview] = useState<PatchReview | null>(null);
@@ -98,8 +103,8 @@ function App() {
     ...(ollama?.missingPolicyModels.length ? [`Faltan modelos: ${ollama.missingPolicyModels.join(", ")}`] : []),
   ];
   const narrative = useMemo(
-    () => buildAgentNarrative({ inspection, ollama, plan, draft, review, gateResult, run, blockers, busy }),
-    [inspection, ollama, plan, draft, review, gateResult, run, blockers, busy],
+    () => buildAgentNarrative({ inspection, ollama, plan, contextPack, draft, review, gateResult, run, blockers, busy }),
+    [inspection, ollama, plan, contextPack, draft, review, gateResult, run, blockers, busy],
   );
 
   async function loadAll() {
@@ -168,6 +173,20 @@ function App() {
     }
   }
 
+  async function createContextPack() {
+    setBusy("contextPack");
+    setError(null);
+    try {
+      const nextContext = await getDevelopmentContextPack(repoPath, objective);
+      setContextPack(nextContext);
+      setActiveTab("contexto");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function runDryCycle() {
     setBusy("run");
     setError(null);
@@ -207,6 +226,11 @@ function App() {
       const nextPlan = await planMicrocycle(repoPath, objective);
       setPlan(nextPlan);
       markMicroStep("plan", nextPlan.blocked ? "blocked" : "completed", `Modelo ${nextPlan.modelUsed}; gate ${nextPlan.recommendedGate}.`);
+
+      markMicroStep("context", "running", "Preparando contexto local sanitizado.");
+      const nextContext = await getDevelopmentContextPack(repoPath, objective);
+      setContextPack(nextContext);
+      markMicroStep("context", nextContext.status === "blocked" ? "blocked" : "completed", `${nextContext.files.length} entradas; ${nextContext.totalBytes}/${nextContext.maxBytes} bytes.`);
 
       markMicroStep("draft", "running", "Preparando PatchDraft revisable.");
       const nextDraft = await draftPatch(repoPath, objective);
@@ -358,6 +382,10 @@ function App() {
                   <ClipboardList className="mr-2 h-4 w-4" />
                   {busy === "workPackage" ? "Paquete..." : "Paquete"}
                 </Button>
+                <Button variant="secondary" onClick={createContextPack} disabled={busy !== null}>
+                  <BookOpenCheck className="mr-2 h-4 w-4" />
+                  {busy === "contextPack" ? "Contexto..." : "Contexto"}
+                </Button>
                 <Button variant="secondary" onClick={runDryCycle} disabled={busy !== null}>
                   <Play className="mr-2 h-4 w-4" />
                   {busy === "run" ? "Ejecutando..." : "Dry-run"}
@@ -382,6 +410,7 @@ function App() {
         {activeTab === "repo" && <RepoTab inspection={inspection} ollama={ollama} />}
         {activeTab === "preparacion" && <ReadinessTab readiness={readiness} />}
         {activeTab === "paquete" && <WorkPackageTab workPackage={workPackage} />}
+        {activeTab === "contexto" && <ContextPackTab contextPack={contextPack} />}
         {activeTab === "microproceso" && <MicroProcessTab steps={microSteps} run={run} gateResult={gateResult} />}
         {activeTab === "plan" && <PlanTab plan={plan} />}
         {activeTab === "patch" && <PatchTab draft={draft} review={review} />}
@@ -617,6 +646,54 @@ function WorkPackageTab({ workPackage }: { workPackage: DevelopmentWorkPackage |
   );
 }
 
+function ContextPackTab({ contextPack }: { contextPack: DevelopmentContextPack | null }) {
+  if (!contextPack) return <Empty text="Sin contexto local. Presiona Contexto para preparar memoria de trabajo sanitizada." />;
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Contexto Local" description="Memoria de trabajo acotada para modelos Ollama, sin escritura sobre OneEpis.">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={contextPackTone(contextPack.status)}>{contextPackStatusLabel(contextPack.status)}</Badge>
+          <Badge>{contextPack.files.length} entradas</Badge>
+          <Badge>{contextPack.totalBytes}/{contextPack.maxBytes} bytes</Badge>
+        </div>
+        <p className="mt-3 text-sm leading-6 break-words">{contextPack.summary}</p>
+        <HelpText label="Objetivo" value={contextPack.objective} />
+        <div className="mt-3 grid gap-3">
+          {contextPack.files.map((file) => (
+            <div key={`${file.path}-${file.kind}`} className="min-w-0 rounded border border-border bg-background px-3 py-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={file.kind === "file" ? "success" : file.kind === "skipped" ? "warning" : "neutral"}>{file.kind}</Badge>
+                <span className="min-w-0 font-medium break-words">{file.path}</span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground break-words">{file.summary}</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>{file.bytes} bytes</span>
+                <span>{file.lines} lineas</span>
+                {file.sha256 && <span className="min-w-0 break-all">sha {file.sha256.slice(0, 12)}</span>}
+              </div>
+              {file.excerpt && (
+                <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-surface p-3 text-xs text-muted-foreground">
+                  {file.excerpt}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Notas Para El Modelo" description="Instrucciones de uso para el contexto local.">
+          <List items={contextPack.promptNotes} />
+          <List items={contextPack.gates.map((gate) => `Gate requerido: ${gate}`)} />
+        </Card>
+        <Card title="Omisiones Y Riesgos" description="Nada omitido se debe asumir como conocido por el agente.">
+          <List items={contextPack.warnings} tone="warning" empty="Sin warnings del contexto." />
+        </Card>
+      </div>
+    </section>
+  );
+}
+
 function PlanTab({ plan }: { plan: MicroPlan | null }) {
   if (!plan) return <Empty text="Sin microplan." />;
   return (
@@ -795,6 +872,7 @@ function tabLabel(tab: Tab) {
     repo: "Repo",
     preparacion: "Preparacion",
     paquete: "Paquete",
+    contexto: "Contexto",
     microproceso: "Microproceso",
     plan: "Plan",
     patch: "Patch",
@@ -837,6 +915,21 @@ function workPackageStatusLabel(status: string) {
     ready_to_draft: "listo para PatchDraft",
     blocked: "bloqueado",
     needs_gate: "requiere gate",
+  };
+  return labels[status] ?? status;
+}
+
+function contextPackTone(status: string) {
+  if (status === "ready") return "success";
+  if (status === "blocked") return "danger";
+  return "warning";
+}
+
+function contextPackStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    ready: "listo",
+    partial: "parcial",
+    blocked: "bloqueado",
   };
   return labels[status] ?? status;
 }

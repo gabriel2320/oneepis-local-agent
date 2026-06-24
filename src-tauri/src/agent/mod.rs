@@ -1,3 +1,4 @@
+pub mod context_pack;
 pub mod gates;
 pub mod governance;
 pub mod ollama;

@@ -138,6 +138,33 @@ pub struct DevelopmentWorkPackage {
     pub can_apply: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextPackFile {
+    pub path: String,
+    pub kind: String,
+    pub bytes: usize,
+    pub lines: usize,
+    pub sha256: String,
+    pub summary: String,
+    pub excerpt: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevelopmentContextPack {
+    pub repo_path: String,
+    pub objective: String,
+    pub status: String,
+    pub summary: String,
+    pub files: Vec<ContextPackFile>,
+    pub warnings: Vec<String>,
+    pub prompt_notes: Vec<String>,
+    pub gates: Vec<String>,
+    pub total_bytes: usize,
+    pub max_bytes: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MicroPlan {

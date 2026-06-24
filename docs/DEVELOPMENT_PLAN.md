@@ -25,6 +25,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Keep help text operational and tied to cycle state, not marketing copy.
 - Provide `DevelopmentReadiness` before planning: repo readiness, Ollama/model health, required gates, blockers, next actions, and suggested microcycles.
 - Provide `DevelopmentWorkPackage` for a selected objective: files to inspect, implementation steps, test plan, acceptance criteria, stop conditions, gates, and branch strategy.
+- Provide `DevelopmentContextPack` for the selected objective: bounded local snippets, directory summaries, sanitization warnings, prompt notes, and gates for Ollama-only programming.
 
 ### v0.3 Controlled Execution
 
@@ -46,6 +47,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Prevent long governance text, Windows paths, model names, tokens, diffs, and gate output from overflowing cards.
 - Translate technical states such as `completed`, `blocked`, `passed`, and `failed` into Spanish labels.
 - Keep the first screen operational with repo, objective, cycle controls, blockers, and natural-language agent status.
+- Show context packs with wrapping cards, explicit omissions, byte budgets, and notes that tell the local model how to use the context.
 
 ### v0.5 Local Distribution
 
@@ -62,6 +64,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `AgentNarrative`: frontend-only explanation of what the agent is doing, why, next action, guardrail, visible power, and checklist.
 - `DevelopmentReadiness`: Spanish readiness report for local OneEpis programming with checks, blockers, warnings, next actions, required gates, model summary, and suggested microcycles.
 - `DevelopmentWorkPackage`: executable planning contract for one local programming microcycle, including tests and acceptance criteria.
+- `DevelopmentContextPack`: read-only local context contract with proposed files, sanitized excerpts, directory summaries, skipped/missing paths, prompt notes, gates, and byte budget.
 
 ## Governed Power
 
@@ -70,12 +73,13 @@ The agent may become more useful without becoming unbounded. Extra power must fo
 1. Inspect local repo, Git, governance, Ollama, gates, and history.
 2. Produce a readiness diagnosis with blockers, warnings, gates, model health, and suggested microcycles.
 3. Produce a work package with files, steps, tests, acceptance criteria, and stop conditions.
-4. Produce a microplan with risk, surfaces, gates, and warnings.
-5. Produce a `PatchDraft` without writing target files.
-6. Review the draft with deterministic safety checks.
-7. Run only declared gates from `package.json`.
-8. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
-9. Never push automatically.
+4. Produce a context pack with bounded, sanitized local snippets for Ollama.
+5. Produce a microplan with risk, surfaces, gates, and warnings.
+6. Produce a `PatchDraft` without writing target files.
+7. Review the draft with deterministic safety checks.
+8. Run only declared gates from `package.json`.
+9. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
+10. Never push automatically.
 
 ## Gates
 
@@ -91,4 +95,5 @@ Target repo gates are only run when they are declared in the target `package.jso
 
 - Every code change to this agent should land through a branch and pull request.
 - Every PR should document the closed microprocess it exercised: objective, preflight result, PatchDraft/review state, gate result, and stop condition.
+- When a PR changes agent behavior, include the context-pack result or explain why no context pack was needed.
 - A blocked target repo is still a valid microprocess result when the block is explained and no target files are changed.
