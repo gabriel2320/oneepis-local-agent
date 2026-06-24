@@ -57,6 +57,7 @@ npm run agent -- local-problem-prepare "C:\\Users\\gdela\\OneDrive\\Documentos I
 npm run agent -- local-problem-commit "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
 npm run agent -- local-problem-solve "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --problem LOCAL-001
 npm run agent -- training-scenarios
+npm run agent -- training-evaluate "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- training-plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --scenario TRAIN-001 --cycles 1
 npm run agent -- training-prepare "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --scenario TRAIN-001 --cycles 1
 npm run agent -- run "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --max-cycles 1
@@ -119,13 +120,14 @@ Flujo recomendado:
 
 ```bash
 npm run agent -- training-scenarios
+npm run agent -- training-evaluate "<OneEpis>"
 npm run agent -- training-plan "<OneEpis>" --scenario TRAIN-010 --cycles 1
 npm run agent -- training-prepare "<OneEpis>" --scenario TRAIN-010 --cycles 1
 ```
 
-`training-plan` no escribe archivos. `training-prepare` solo prepara la rama local del escenario cuando el repo esta limpio y los gates declarados existen. No crea commits, no ejecuta push y no aplica cambios clinicos.
+`training-evaluate` no escribe archivos: ordena los 15 escenarios por exito esperado, separa alta/media/baja confianza, muestra gates oficiales, verificaciones manuales, riesgos y acciones siguientes. `training-plan` no escribe archivos. `training-prepare` solo prepara la rama local del escenario cuando el repo esta limpio y los gates declarados existen. No crea commits, no ejecuta push y no aplica cambios clinicos.
 
-La interfaz muestra la pestana `TRAIN` con selector de escenario, ciclos, reglas de parada, plan y preparacion de rama.
+La interfaz muestra la pestana `TRAIN` con selector de escenario, evaluacion de exito esperado, ciclos, reglas de parada, plan y preparacion de rama.
 
 ## Configuracion
 
@@ -236,7 +238,7 @@ Estado actual:
 - Catalogo `LOCAL-001..LOCAL-010` para microciclos de dieta/refactor simple en OneEpis.
 - `LocalProblemPlan`, preparacion de rama `agent/local-*` y commit local gobernado sin push automatico.
 - Catalogo `TRAIN-001..TRAIN-015` para entrenamiento avanzado local, una rama `agent/train-*`, maximo 3 ciclos, solo IA local y sin push automatico.
-- `TrainingPlan` y `TrainingRun` para revisar bloqueos y preparar rama TRAIN sin escribir cambios reales.
+- `TrainingEvaluation`, `TrainingPlan` y `TrainingRun` para ordenar exito esperado, revisar bloqueos y preparar rama TRAIN sin escribir cambios reales.
 - Gates declarados por `package.json`.
 - Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.

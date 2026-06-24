@@ -429,3 +429,34 @@ export type TrainingRun = {
   localAiOnly: boolean;
   summary: string;
 };
+
+export type TrainingEvaluationItem = {
+  scenario: TrainingScenario;
+  readinessStatus: string;
+  successLevel: "high" | "medium" | "low" | "blocked" | string;
+  successScore: number;
+  verdict: string;
+  officialGates: string[];
+  manualGates: string[];
+  blockers: string[];
+  warnings: string[];
+  strengths: string[];
+  risks: string[];
+  nextActions: string[];
+};
+
+export type TrainingEvaluation = {
+  repoPath: string;
+  status: string;
+  summary: string;
+  total: number;
+  highConfidence: number;
+  mediumConfidence: number;
+  lowConfidence: number;
+  blocked: number;
+  recommendedOrder: string[];
+  items: TrainingEvaluationItem[];
+  warnings: string[];
+  noPush: boolean;
+  localAiOnly: boolean;
+};

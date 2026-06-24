@@ -90,6 +90,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `LocalProblemRun`: result of preparing a safe branch or creating a local commit, including changed files, gate results, commit SHA, blockers, warnings, and no-push guarantee.
 - `solve_local_problem`: controlled autonomous execution for `LOCAL-001..LOCAL-010`. It must prepare the safe branch from a clean base, edit only the declared surface, run declared gates, restore unrelated gate artifacts, create one local commit, and never push.
 - `TrainingScenario`: one advanced OneEpis training case with objective, branch, taught skills, gates, manual gates, allowed surfaces, stop conditions, execution mode, and local-only instructions.
+- `TrainingEvaluation`: read-only scoring of all TRAIN scenarios with readiness, success score, confidence level, gates, manual checks, blockers, risks, strengths, next actions, and recommended order.
 - `TrainingPlan`: read-only preflight for one TRAIN scenario with cycles, max cycles, blockers, warnings, next actions, no-push guarantee, and local-AI-only guarantee.
 - `TrainingRun`: result of preparing a safe `agent/train-*` branch for one scenario. It must not write project files, create commits, run push, or bypass OneEpis governance.
 - Proposals that mention files outside the governed context or gates outside the package become `needs_review`, not an approved path to PatchDraft.
@@ -113,8 +114,9 @@ The agent may become more useful without becoming unbounded. Extra power must fo
 12. Run only declared gates from `package.json`.
 13. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
 14. Prepare and close pre-approved LOCAL problems only on `agent/local-*` branches, with validated files, declared gates, and a local commit.
-15. Prepare advanced TRAIN scenarios only on `agent/train-*` branches, with maximum three cycles, declared gates, explicit stop conditions, local AI only, and no file writes during preparation.
-16. Never push automatically.
+15. Evaluate advanced TRAIN scenarios before preparing branches, ranking confidence and making manual gate gaps visible.
+16. Prepare advanced TRAIN scenarios only on `agent/train-*` branches, with maximum three cycles, declared gates, explicit stop conditions, local AI only, and no file writes during preparation.
+17. Never push automatically.
 
 ## Gates
 

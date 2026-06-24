@@ -17,7 +17,8 @@ use agent::types::{
     DevelopmentBrief, DevelopmentContextPack, DevelopmentReadiness, DevelopmentWorkPackage,
     EvolutionPlan, GateResult, ImplementationDecision, LocalProblemPlan, LocalProblemRequest,
     LocalProblemRun, LocalProblemSpec, MicroPlan, OllamaStatus, PatchDraft, PatchReview,
-    RepoInspection, RunRequest, TrainingPlan, TrainingRequest, TrainingRun, TrainingScenario,
+    RepoInspection, RunRequest, TrainingEvaluation, TrainingPlan, TrainingRequest, TrainingRun,
+    TrainingScenario,
 };
 use agent::work_package;
 
@@ -179,6 +180,11 @@ fn list_training_scenarios() -> Result<Vec<TrainingScenario>, String> {
     Ok(training::list_training_scenarios())
 }
 
+#[tauri::command(rename_all = "camelCase")]
+fn evaluate_training_scenarios(repo_path: String) -> Result<TrainingEvaluation, String> {
+    training::evaluate_training_scenarios(&repo_path)
+}
+
 #[tauri::command]
 fn training_plan(request: TrainingRequest) -> Result<TrainingPlan, String> {
     training::training_plan(request)
@@ -215,6 +221,7 @@ fn main() {
             commit_local_problem,
             solve_local_problem,
             list_training_scenarios,
+            evaluate_training_scenarios,
             training_plan,
             prepare_training_scenario
         ])

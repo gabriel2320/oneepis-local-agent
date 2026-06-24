@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   draftPatch,
+  evaluateTrainingScenarios,
   getDevelopmentBrief,
   getDevelopmentContextPack,
   getDevelopmentReadiness,
@@ -65,6 +66,7 @@ import type {
   PatchDraft,
   PatchReview,
   RepoInspection,
+  TrainingEvaluation,
   TrainingPlan,
   TrainingRun,
   TrainingScenario,
@@ -131,6 +133,7 @@ function App() {
   const [trainingScenarios, setTrainingScenarios] = useState<TrainingScenario[]>([]);
   const [selectedTrainingScenario, setSelectedTrainingScenario] = useState("TRAIN-001");
   const [trainingCycles, setTrainingCycles] = useState(1);
+  const [trainingEvaluation, setTrainingEvaluation] = useState<TrainingEvaluation | null>(null);
   const [trainingPlanResult, setTrainingPlanResult] = useState<TrainingPlan | null>(null);
   const [trainingRun, setTrainingRun] = useState<TrainingRun | null>(null);
   const [microSteps, setMicroSteps] = useState<MicroStep[]>(initialMicroSteps);
@@ -159,13 +162,14 @@ function App() {
     setBusy("inspect");
     setError(null);
     try {
-      const [repo, ai, history, ready, problems, scenarios] = await Promise.all([
+      const [repo, ai, history, ready, problems, scenarios, trainEval] = await Promise.all([
         inspectRepository(repoPath),
         getOllamaStatus(),
         listRuns(20),
         getDevelopmentReadiness(repoPath),
         listLocalProblems(),
         listTrainingScenarios(),
+        evaluateTrainingScenarios(repoPath),
       ]);
       setInspection(repo);
       setOllama(ai);
@@ -173,6 +177,7 @@ function App() {
       setReadiness(ready);
       setLocalProblems(problems);
       setTrainingScenarios(scenarios);
+      setTrainingEvaluation(trainEval);
       if (!problems.some((problem) => problem.id === selectedLocalProblem)) {
         setSelectedLocalProblem(problems[0]?.id ?? "LOCAL-001");
       }
@@ -524,6 +529,20 @@ function App() {
     }
   }
 
+  async function evaluateSelectedTrainingScenarios() {
+    setBusy("trainingEvaluate");
+    setError(null);
+    try {
+      const result = await evaluateTrainingScenarios(repoPath);
+      setTrainingEvaluation(result);
+      setActiveTab("entrenamiento");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function prepareSelectedTrainingScenario() {
     setBusy("trainingPrepare");
     setError(null);
@@ -722,8 +741,10 @@ function App() {
             onSelectScenario={setSelectedTrainingScenario}
             cycles={trainingCycles}
             onSetCycles={setTrainingCycles}
+            evaluation={trainingEvaluation}
             plan={trainingPlanResult}
             run={trainingRun}
+            onEvaluate={evaluateSelectedTrainingScenarios}
             onPlan={planSelectedTrainingScenario}
             onPrepare={prepareSelectedTrainingScenario}
             busy={busy}
@@ -1169,8 +1190,10 @@ function TrainingTab({
   onSelectScenario,
   cycles,
   onSetCycles,
+  evaluation,
   plan,
   run,
+  onEvaluate,
   onPlan,
   onPrepare,
   busy,
@@ -1180,8 +1203,10 @@ function TrainingTab({
   onSelectScenario: (scenarioId: string) => void;
   cycles: number;
   onSetCycles: (cycles: number) => void;
+  evaluation: TrainingEvaluation | null;
   plan: TrainingPlan | null;
   run: TrainingRun | null;
+  onEvaluate: () => void;
   onPlan: () => void;
   onPrepare: () => void;
   busy: string | null;
@@ -1231,6 +1256,10 @@ function TrainingTab({
           <p className="text-sm leading-6 text-muted-foreground break-words">{selected.objective}</p>
           <HelpText label="Rama segura" value={selected.branch} />
           <div className="mt-2 flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={onEvaluate} disabled={busy !== null}>
+              <Activity className="mr-2 h-4 w-4" />
+              {busy === "trainingEvaluate" ? "Evaluando..." : "Evaluar exito"}
+            </Button>
             <Button variant="secondary" onClick={onPlan} disabled={busy !== null}>
               <ListChecks className="mr-2 h-4 w-4" />
               {busy === "trainingPlan" ? "Revisando..." : "Revisar TRAIN"}
@@ -1256,6 +1285,42 @@ function TrainingTab({
           <List items={selected.instructions} />
         </Card>
       </div>
+
+      <Card title="Exito esperado" description="Lectura de los 15 TRAIN: cuales conviene atacar primero y cuales necesitan mas barandas.">
+        {evaluation ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={evaluation.status === "ready" ? "success" : evaluation.status === "blocked" ? "danger" : "warning"}>{explainStatus(evaluation.status)}</Badge>
+              <Badge>{evaluation.highConfidence} alta</Badge>
+              <Badge>{evaluation.mediumConfidence} media</Badge>
+              <Badge>{evaluation.lowConfidence} baja</Badge>
+              <Badge tone={evaluation.blocked > 0 ? "warning" : "neutral"}>{evaluation.blocked} bloqueada</Badge>
+              <Badge>{evaluation.localAiOnly ? "solo IA local" : "revisar IA"}</Badge>
+              <Badge>{evaluation.noPush ? "sin push" : "revisar push"}</Badge>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground break-words">{evaluation.summary}</p>
+            <HelpText label="Orden recomendado" value={evaluation.recommendedOrder.slice(0, 8).join(", ") || "Sin orden recomendado."} />
+            <List items={evaluation.warnings} tone="warning" empty="Sin avisos globales." />
+            <div className="mt-3 grid gap-2">
+              {evaluation.items.map((item) => (
+                <div key={item.scenario.id} className="min-w-0 rounded border border-border bg-background px-3 py-2 text-sm">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge tone={trainingSuccessTone(item.successLevel)}>{trainingSuccessLabel(item.successLevel)}</Badge>
+                    <Badge>{item.successScore}/100</Badge>
+                    <Badge>{explainStatus(item.readinessStatus)}</Badge>
+                  </div>
+                  <h4 className="mt-2 text-sm font-semibold break-words">{item.scenario.id} - {item.scenario.title}</h4>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground break-words">{item.verdict}</p>
+                  <List items={item.risks.slice(0, 2)} tone="warning" empty="Sin riesgos principales." />
+                  <List items={item.nextActions.slice(0, 2)} empty="Sin accion siguiente." />
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <Empty text="Sin evaluacion. Presiona Evaluar exito para ordenar TRAIN por probabilidad de cierre." />
+        )}
+      </Card>
 
       <Card title="Plan TRAIN" description="Revision antes de preparar rama. No escribe archivos del proyecto.">
         {plan ? (
@@ -1735,6 +1800,24 @@ function riskTone(risk: string) {
   if (risk === "red") return "danger";
   if (risk === "yellow") return "warning";
   return "success";
+}
+
+function trainingSuccessTone(level: string) {
+  if (level === "high") return "success";
+  if (level === "medium") return "warning";
+  if (level === "low") return "warning";
+  if (level === "blocked") return "danger";
+  return "neutral";
+}
+
+function trainingSuccessLabel(level: string) {
+  const labels: Record<string, string> = {
+    high: "exito alto",
+    medium: "exito medio",
+    low: "exito bajo",
+    blocked: "bloqueado",
+  };
+  return labels[level] ?? level;
 }
 
 function evolutionTone(status: string) {

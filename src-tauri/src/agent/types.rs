@@ -556,6 +556,41 @@ pub struct TrainingRun {
     pub summary: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingEvaluationItem {
+    pub scenario: TrainingScenario,
+    pub readiness_status: String,
+    pub success_level: String,
+    pub success_score: i32,
+    pub verdict: String,
+    pub official_gates: Vec<String>,
+    pub manual_gates: Vec<String>,
+    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
+    pub strengths: Vec<String>,
+    pub risks: Vec<String>,
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingEvaluation {
+    pub repo_path: String,
+    pub status: String,
+    pub summary: String,
+    pub total: usize,
+    pub high_confidence: usize,
+    pub medium_confidence: usize,
+    pub low_confidence: usize,
+    pub blocked: usize,
+    pub recommended_order: Vec<String>,
+    pub items: Vec<TrainingEvaluationItem>,
+    pub warnings: Vec<String>,
+    pub no_push: bool,
+    pub local_ai_only: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunRequest {

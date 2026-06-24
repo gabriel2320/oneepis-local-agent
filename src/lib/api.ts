@@ -21,6 +21,7 @@ import type {
   PatchDraft,
   PatchReview,
   RepoInspection,
+  TrainingEvaluation,
   TrainingPlan,
   TrainingRun,
   TrainingScenario,
@@ -162,6 +163,10 @@ export function listTrainingScenarios() {
   return safeInvoke<TrainingScenario[]>("list_training_scenarios", {});
 }
 
+export function evaluateTrainingScenarios(repoPath: string) {
+  return safeInvoke<TrainingEvaluation>("evaluate_training_scenarios", { repoPath });
+}
+
 export function trainingPlan(repoPath: string, scenarioId: string, cycles = 1) {
   return safeInvoke<TrainingPlan>("training_plan", { request: { repoPath, scenarioId, cycles } });
 }
@@ -247,6 +252,8 @@ function previewResponse(command: string, args: CommandArgs) {
       return previewLocalProblemRun(repoPath, String(requestField(args, "problemId") ?? "LOCAL-003"), "blocked");
     case "list_training_scenarios":
       return previewTrainingScenarios();
+    case "evaluate_training_scenarios":
+      return previewTrainingEvaluation(repoPath);
     case "training_plan":
       return previewTrainingPlan(
         repoPath,
@@ -765,5 +772,40 @@ function previewTrainingRun(repoPath: string, scenarioId: string, cycles: number
     noPush: true,
     localAiOnly: true,
     summary: "La vista previa no crea ramas ni ejecuta entrenamiento real.",
+  };
+}
+
+function previewTrainingEvaluation(repoPath: string): TrainingEvaluation {
+  const items = previewTrainingScenarios().map((scenario, index) => {
+    const successLevel = scenario.manualGates.length > 0 ? (scenario.executionMode === "plan_only" ? "high" : "medium") : "high";
+    return {
+      scenario,
+      readinessStatus: scenario.executionMode === "plan_only" ? "plan_only_ready" : "ready",
+      successLevel,
+      successScore: successLevel === "high" ? 82 - index : 64 - index,
+      verdict: `${scenario.id}: vista previa de probabilidad ${successLevel}.`,
+      officialGates: scenario.gates,
+      manualGates: scenario.manualGates,
+      blockers: [],
+      warnings: scenario.manualGates.length > 0 ? ["Requiere verificacion manual/local adicional."] : [],
+      strengths: ["Sin push automatico.", "Solo IA local."],
+      risks: scenario.manualGates.length > 0 ? ["Falta convertir una verificacion manual en comando tipado."] : [],
+      nextActions: ["Abrir la app de escritorio para evaluar los 15 TRAIN reales."],
+    };
+  });
+  return {
+    repoPath,
+    status: "ready",
+    summary: "Vista previa de evaluacion TRAIN. La app de escritorio calcula los 15 escenarios reales.",
+    total: items.length,
+    highConfidence: items.filter((item) => item.successLevel === "high").length,
+    mediumConfidence: items.filter((item) => item.successLevel === "medium").length,
+    lowConfidence: 0,
+    blocked: 0,
+    recommendedOrder: items.map((item) => item.scenario.id),
+    items,
+    warnings: [PREVIEW_NOTICE],
+    noPush: true,
+    localAiOnly: true,
   };
 }

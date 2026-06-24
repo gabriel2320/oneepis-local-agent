@@ -1,6 +1,9 @@
 use crate::agent::repo::{canonical_repo, git, inspect_repository};
 use crate::agent::safety::sha256_hex;
-use crate::agent::types::{TrainingPlan, TrainingRequest, TrainingRun, TrainingScenario};
+use crate::agent::types::{
+    TrainingEvaluation, TrainingEvaluationItem, TrainingPlan, TrainingRequest, TrainingRun,
+    TrainingScenario,
+};
 
 use chrono::Utc;
 use std::path::Path;
@@ -19,6 +22,81 @@ const TRAINING_RULES: &[&str] = &[
 
 pub fn list_training_scenarios() -> Vec<TrainingScenario> {
     training_scenarios()
+}
+
+pub fn evaluate_training_scenarios(repo_path: &str) -> Result<TrainingEvaluation, String> {
+    let inspection = inspect_repository(repo_path)?;
+    let mut items = training_scenarios()
+        .into_iter()
+        .map(|scenario| evaluate_training_scenario(&inspection, scenario))
+        .collect::<Vec<_>>();
+    items.sort_by(|left, right| {
+        right
+            .success_score
+            .cmp(&left.success_score)
+            .then_with(|| left.scenario.id.cmp(&right.scenario.id))
+    });
+
+    let blocked = items
+        .iter()
+        .filter(|item| item.success_level == "blocked")
+        .count();
+    let high_confidence = items
+        .iter()
+        .filter(|item| item.success_level == "high")
+        .count();
+    let medium_confidence = items
+        .iter()
+        .filter(|item| item.success_level == "medium")
+        .count();
+    let low_confidence = items
+        .iter()
+        .filter(|item| item.success_level == "low")
+        .count();
+    let recommended_order = items
+        .iter()
+        .filter(|item| matches!(item.success_level.as_str(), "high" | "medium"))
+        .map(|item| item.scenario.id.clone())
+        .collect::<Vec<_>>();
+    let mut warnings = Vec::new();
+    if inspection.dirty {
+        warnings.push(
+            "Hay cambios pendientes; la evaluacion puede explicar TRAIN, pero no debe preparar ramas."
+                .to_string(),
+        );
+    }
+    if !inspection.is_one_epis {
+        warnings.push(
+            "El adaptador OneEpis no esta activo; TRAIN queda solo como referencia.".to_string(),
+        );
+    }
+
+    let status = if blocked == items.len() {
+        "blocked"
+    } else if high_confidence + medium_confidence > 0 {
+        "ready"
+    } else {
+        "review_only"
+    };
+    let summary = format!(
+        "Evaluacion TRAIN: {high_confidence} alta confianza, {medium_confidence} media, {low_confidence} baja y {blocked} bloqueada."
+    );
+
+    Ok(TrainingEvaluation {
+        repo_path: inspection.repo_path,
+        status: status.to_string(),
+        summary,
+        total: items.len(),
+        high_confidence,
+        medium_confidence,
+        low_confidence,
+        blocked,
+        recommended_order,
+        items,
+        warnings,
+        no_push: true,
+        local_ai_only: true,
+    })
 }
 
 pub fn training_plan(request: TrainingRequest) -> Result<TrainingPlan, String> {
@@ -90,6 +168,215 @@ pub fn training_plan(request: TrainingRequest) -> Result<TrainingPlan, String> {
         local_ai_only: true,
         summary: "Plan de entrenamiento local gobernado para OneEpis.".to_string(),
     })
+}
+
+fn evaluate_training_scenario(
+    inspection: &crate::agent::types::RepoInspection,
+    scenario: TrainingScenario,
+) -> TrainingEvaluationItem {
+    let mut blockers = common_training_blocks(inspection, &scenario, 1);
+    let mut warnings = Vec::new();
+
+    if inspection.dirty && inspection.current_branch == scenario.branch {
+        warnings.push(
+            "Hay cambios pendientes en la rama de entrenamiento; revisar que pertenezcan a este TRAIN."
+                .to_string(),
+        );
+    } else if inspection.dirty {
+        blockers.push(format!(
+            "Hay cambios pendientes fuera de {}; guarda o descarta antes de preparar TRAIN.",
+            scenario.branch
+        ));
+    }
+    if scenario.execution_mode == "plan_only" {
+        warnings.push(
+            "Este TRAIN se considera exitoso si termina en plan/contrato minimo.".to_string(),
+        );
+    }
+    if !scenario.manual_gates.is_empty() {
+        warnings.push(format!(
+            "Necesita verificacion manual/local adicional: {}.",
+            scenario.manual_gates.join(", ")
+        ));
+    }
+
+    let risks = training_risks(&scenario);
+    let strengths = training_strengths(&scenario);
+    let mut score = if blockers.is_empty() { 88 } else { 24 };
+    score -= training_mode_penalty(&scenario.execution_mode);
+    score -= (scenario.manual_gates.len() as i32 * 8).min(24);
+    if scenario.gates.is_empty() && !scenario.manual_gates.is_empty() {
+        score -= 12;
+    }
+    if scenario.gates.iter().any(|gate| gate == "check:e2e") {
+        score -= 4;
+    }
+    if scenario
+        .allowed_surfaces
+        .iter()
+        .any(|surface| surface.contains("permissions") || surface.contains("nursing"))
+    {
+        score -= 8;
+    }
+    if !blockers.is_empty() {
+        score = score.min(24);
+    }
+    score = score.clamp(0, 100);
+
+    let success_level = if !blockers.is_empty() {
+        "blocked"
+    } else if score >= 75 {
+        "high"
+    } else if score >= 55 {
+        "medium"
+    } else {
+        "low"
+    };
+    let readiness_status = if !blockers.is_empty() {
+        "blocked"
+    } else if scenario.execution_mode == "plan_only" {
+        "plan_only_ready"
+    } else {
+        "ready"
+    };
+    let verdict = training_verdict(success_level, &scenario);
+    let next_actions = training_evaluation_next_actions(&scenario, success_level, &blockers);
+
+    TrainingEvaluationItem {
+        scenario: scenario.clone(),
+        readiness_status: readiness_status.to_string(),
+        success_level: success_level.to_string(),
+        success_score: score,
+        verdict,
+        official_gates: scenario.gates.clone(),
+        manual_gates: scenario.manual_gates.clone(),
+        blockers,
+        warnings,
+        strengths,
+        risks,
+        next_actions,
+    }
+}
+
+fn training_strengths(scenario: &TrainingScenario) -> Vec<String> {
+    let mut strengths = Vec::new();
+    if !scenario.gates.is_empty() {
+        strengths.push(format!(
+            "Tiene gates oficiales declarados: {}.",
+            scenario.gates.join(", ")
+        ));
+    }
+    if scenario.manual_gates.is_empty() {
+        strengths.push("No depende de verificacion manual adicional.".to_string());
+    }
+    if scenario.allowed_surfaces.len() <= 3 {
+        strengths.push("Superficie acotada para revisar diff pequeno.".to_string());
+    }
+    if scenario.execution_mode == "plan_only" || scenario.execution_mode == "docs_only" {
+        strengths.push("Puede cerrarse sin tocar conducta clinica.".to_string());
+    }
+    strengths
+}
+
+fn training_risks(scenario: &TrainingScenario) -> Vec<String> {
+    let mut risks = Vec::new();
+    if !scenario.manual_gates.is_empty() {
+        risks.push(format!(
+            "Falta convertir a comando tipado: {}.",
+            scenario.manual_gates.join(", ")
+        ));
+    }
+    if scenario.gates.iter().any(|gate| gate == "check:e2e") {
+        risks.push("Depende de E2E; puede fallar por selectores o datos de prueba.".to_string());
+    }
+    if scenario.execution_mode == "manual_gate_required" {
+        risks.push("Requiere entorno local adicional antes de declarar exito.".to_string());
+    }
+    if scenario.execution_mode == "failure_drill" {
+        risks.push("Debe simular fallo sin romper guardado clinico.".to_string());
+    }
+    if scenario.execution_mode == "experiment_local" {
+        risks.push(
+            "Debe medir con dataset sintetico acotado y no commitear datos pesados.".to_string(),
+        );
+    }
+    if scenario
+        .allowed_surfaces
+        .iter()
+        .any(|surface| surface.contains("permissions") || surface.contains("nursing"))
+    {
+        risks.push("Toca permisos o roles clinicos; exige revision humana cuidadosa.".to_string());
+    }
+    risks
+}
+
+fn training_mode_penalty(mode: &str) -> i32 {
+    match mode {
+        "guided_refactor" => 4,
+        "audit_then_patch" => 8,
+        "test_refactor" => 8,
+        "manual_gate_required" => 18,
+        "failure_drill" => 18,
+        "plan_only" => 0,
+        "audit_only" => 14,
+        "experiment_local" => 24,
+        "docs_only" => 4,
+        _ => 10,
+    }
+}
+
+fn training_verdict(level: &str, scenario: &TrainingScenario) -> String {
+    match level {
+        "high" => format!(
+            "Alta probabilidad de cierre gobernado para {}.",
+            scenario.id
+        ),
+        "medium" => format!(
+            "Probabilidad media: {} necesita control humano o verificacion adicional.",
+            scenario.id
+        ),
+        "low" => format!(
+            "Probabilidad baja: {} debe mejorar gates o alcance antes de resolver.",
+            scenario.id
+        ),
+        _ => format!("{} bloqueado antes de iniciar entrenamiento.", scenario.id),
+    }
+}
+
+fn training_evaluation_next_actions(
+    scenario: &TrainingScenario,
+    success_level: &str,
+    blockers: &[String],
+) -> Vec<String> {
+    if !blockers.is_empty() {
+        return blockers
+            .iter()
+            .take(2)
+            .cloned()
+            .chain(["Resolver bloqueos antes de preparar rama TRAIN.".to_string()])
+            .collect();
+    }
+    let mut actions = Vec::new();
+    if scenario.execution_mode == "plan_only" {
+        actions.push("Cerrar como plan/contrato minimo, sin aplicar UI amplia.".to_string());
+    } else {
+        actions.push(format!("Preparar rama local {}.", scenario.branch));
+    }
+    if !scenario.manual_gates.is_empty() {
+        actions.push(format!(
+            "Convertir o ejecutar verificacion manual/local: {}.",
+            scenario.manual_gates.join(", ")
+        ));
+    }
+    if success_level == "low" {
+        actions.push("Antes de resolver, crear gate tipado o reducir alcance.".to_string());
+    } else {
+        actions.push(
+            "Mantener maximo 3 ciclos, solo IA local y detenerse ante condicion de stop."
+                .to_string(),
+        );
+    }
+    actions
 }
 
 pub async fn prepare_training_scenario(request: TrainingRequest) -> Result<TrainingRun, String> {
@@ -534,6 +821,49 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("plan/contrato minimo")));
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn evaluation_scores_all_training_scenarios() {
+        let repo = temp_repo("evaluation");
+        let result = evaluate_training_scenarios(&repo.display().to_string()).expect("evaluation");
+        assert_eq!(result.total, 15);
+        assert_eq!(result.blocked, 0);
+        assert!(result.high_confidence > 0);
+        assert!(result.recommended_order.contains(&"TRAIN-001".to_string()));
+        let train_007 = result
+            .items
+            .iter()
+            .find(|item| item.scenario.id == "TRAIN-007")
+            .expect("TRAIN-007");
+        assert_eq!(train_007.success_level, "medium");
+        assert!(train_007
+            .risks
+            .iter()
+            .any(|risk| risk.contains("comando tipado")));
+        let train_013 = result
+            .items
+            .iter()
+            .find(|item| item.scenario.id == "TRAIN-013")
+            .expect("TRAIN-013");
+        assert_eq!(train_013.success_level, "low");
+        assert!(result.no_push);
+        assert!(result.local_ai_only);
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn evaluation_blocks_dirty_repo() {
+        let repo = temp_repo("evaluation-dirty");
+        fs::write(repo.join("dirty.txt"), "pending").expect("dirty");
+        let result = evaluate_training_scenarios(&repo.display().to_string()).expect("evaluation");
+        assert_eq!(result.status, "blocked");
+        assert_eq!(result.blocked, 15);
+        assert!(result
+            .items
+            .iter()
+            .all(|item| item.success_level == "blocked"));
         let _ = fs::remove_dir_all(repo);
     }
 
