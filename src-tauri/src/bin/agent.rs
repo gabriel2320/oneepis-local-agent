@@ -3,6 +3,7 @@ mod agent;
 
 use agent::brief;
 use agent::context_pack;
+use agent::evolution;
 use agent::gates;
 use agent::ollama;
 use agent::patch;
@@ -67,6 +68,12 @@ async fn run() -> Result<(), String> {
             print_json(
                 &brief::implementation_decision(repo_path, objective, ask_model, None).await?,
             )?;
+        }
+        "evolution-plan" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Elegir el siguiente microproceso de evolucion supervisada.");
+            print_json(&evolution::evolution_plan(repo_path, objective, None).await?)?;
         }
         "plan" => {
             let repo_path = required_repo(&args)?;
@@ -208,7 +215,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent evolution-plan <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
             .to_string(),
     )
 }

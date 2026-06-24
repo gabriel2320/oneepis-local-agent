@@ -168,6 +168,53 @@ export type ImplementationDecision = {
   nextActions: string[];
 };
 
+export type EvolutionCandidate = {
+  id: string;
+  title: string;
+  objective: string;
+  dimension: string;
+  riskLevel: "green" | "yellow" | "red" | string;
+  filesToInspect: string[];
+  gates: string[];
+  expectedImprovement: string;
+  forbiddenFlags: string[];
+  requiresHumanReview: boolean;
+  source: string;
+};
+
+export type EvolutionDimensionScore = {
+  dimension: string;
+  score: number;
+  reason: string;
+};
+
+export type EvolutionScore = {
+  candidateId: string;
+  dimensionScores: EvolutionDimensionScore[];
+  riskPenalty: number;
+  bloatPenalty: number;
+  netScore: number;
+  verdict: "executable" | "review_only" | "rejected" | "blocked" | string;
+  reasons: string[];
+};
+
+export type RankedEvolutionCandidate = {
+  candidate: EvolutionCandidate;
+  score: EvolutionScore;
+};
+
+export type EvolutionPlan = {
+  repoPath: string;
+  status: "ready" | "review_only" | "blocked" | string;
+  summary: string;
+  selectedCandidate?: EvolutionCandidate | null;
+  rankedCandidates: RankedEvolutionCandidate[];
+  blockers: string[];
+  warnings: string[];
+  nextActions: string[];
+  localOnlyBoundary: string;
+};
+
 export type MicroPlan = {
   objective: string;
   recommendedGate: string;

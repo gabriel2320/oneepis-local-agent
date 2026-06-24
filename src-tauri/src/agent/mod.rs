@@ -1,5 +1,6 @@
 pub mod brief;
 pub mod context_pack;
+pub mod evolution;
 pub mod gates;
 pub mod governance;
 pub mod ollama;

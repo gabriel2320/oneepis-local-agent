@@ -2,6 +2,7 @@ mod agent;
 
 use agent::brief;
 use agent::context_pack;
+use agent::evolution;
 use agent::gates;
 use agent::ollama;
 use agent::patch;
@@ -12,8 +13,8 @@ use agent::runner;
 use agent::types::{
     AgentRun, AgentRunReport, AgentRunSummary, ApplyPatchRequest, ApplyPatchResult, ApplyReadiness,
     DevelopmentBrief, DevelopmentContextPack, DevelopmentReadiness, DevelopmentWorkPackage,
-    GateResult, ImplementationDecision, MicroPlan, OllamaStatus, PatchDraft, PatchReview,
-    RepoInspection, RunRequest,
+    EvolutionPlan, GateResult, ImplementationDecision, MicroPlan, OllamaStatus, PatchDraft,
+    PatchReview, RepoInspection, RunRequest,
 };
 use agent::work_package;
 
@@ -72,6 +73,15 @@ async fn implementation_decision(
 ) -> Result<ImplementationDecision, String> {
     brief::implementation_decision(&repo_path, &objective, ask_model.unwrap_or(false), base_url)
         .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn evolution_plan(
+    repo_path: String,
+    objective: String,
+    base_url: Option<String>,
+) -> Result<EvolutionPlan, String> {
+    evolution::evolution_plan(&repo_path, &objective, base_url).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -146,6 +156,7 @@ fn main() {
             development_context_pack,
             development_brief,
             implementation_decision,
+            evolution_plan,
             plan_microcycle,
             run_microcycle,
             run_microcycle_report,

@@ -10,6 +10,7 @@ import type {
   DevelopmentContextPack,
   DevelopmentReadiness,
   DevelopmentWorkPackage,
+  EvolutionPlan,
   GateResult,
   ImplementationDecision,
   MicroPlan,
@@ -45,6 +46,10 @@ export function getDevelopmentBrief(repoPath: string, objective: string, askMode
 
 export function getImplementationDecision(repoPath: string, objective: string, askModel = true, baseUrl?: string) {
   return invoke<ImplementationDecision>("implementation_decision", { repoPath, objective, askModel, baseUrl });
+}
+
+export function getEvolutionPlan(repoPath: string, objective: string, baseUrl?: string) {
+  return invoke<EvolutionPlan>("evolution_plan", { repoPath, objective, baseUrl });
 }
 
 export function planMicrocycle(repoPath: string, objective: string, baseUrl?: string) {

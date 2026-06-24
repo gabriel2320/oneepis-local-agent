@@ -29,6 +29,8 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Provide `DevelopmentContextPack` for the selected objective: bounded local snippets, directory summaries, sanitization warnings, prompt notes, and gates for Ollama-only programming.
 - Provide `DevelopmentBrief` between context and patch: governed system/user prompts, JSON response contract, stop conditions, and optional local Ollama proposal.
 - Provide `ImplementationDecision` between local proposal and patch: selected files, implementation steps, gates, blockers, acceptance criteria, and patch intent.
+- Provide `EvolutionPlan` before package/patch: ranked supervised-evolution candidates, dimension scores, forbidden flags, local-only boundary, selected microprocess, and next actions.
+- Infer up to three safe files from the governed context when a valid local proposal omits `filesToChange`; keep the inference visible as a warning.
 - Provide `AgentRunReport` after a dry-run: Markdown for PR review, status verdict, checklist, warnings, next actions, gate recommendation, and lessons.
 
 ### v0.3 Controlled Execution
@@ -54,6 +56,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Keep the first screen operational with repo, objective, cycle controls, blockers, and natural-language agent status.
 - Show context packs with wrapping cards, explicit omissions, byte budgets, and notes that tell the local model how to use the context.
 - Show local briefs with the exact prompts, expected response schema, proposal summary, risks, gates, and no-apply guardrail.
+- Show supervised evolution with selected candidate, score, ranking, forbidden flags, gates, and local-only boundary.
 
 ### v0.5 Local Distribution
 
@@ -75,8 +78,12 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - `DevelopmentBrief`: read-only local model work order with prompts, response contract, context files, next actions, stop conditions, and optional `LocalModelProposal`.
 - `LocalModelProposal`: Ollama-only structured suggestion with summary, files to change, implementation notes, risks, gates, raw sanitized response, and model used.
 - `ImplementationDecision`: read-only bridge from local model proposal to PatchDraft, including status, selected files, implementation steps, required gates, blockers, acceptance criteria, patch intent, and next actions.
+- `EvolutionCandidate`: candidate objective, dimension, risk, files, gates, expected improvement, forbidden flags, review requirement, and source.
+- `EvolutionScore`: dimension scores, risk/bloat penalties, net score, verdict, and Spanish reasons.
+- `EvolutionPlan`: read-only supervised-evolution decision with selected candidate, ranked candidates, blockers, warnings, next actions, and local-only boundary.
 - `AgentRunReport`: Spanish/Markdown review artifact for closed microprocesses, including run id, verdict, objective, branch, model, recommended gate, checklist, warnings, next actions, and lessons.
 - Proposals that mention files outside the governed context or gates outside the package become `needs_review`, not an approved path to PatchDraft.
+- Proposals that omit files may use a visible, deterministic fallback from safe context files; if no safe files exist, the decision stays blocked.
 
 ## Governed Power
 
@@ -84,17 +91,18 @@ The agent may become more useful without becoming unbounded. Extra power must fo
 
 1. Inspect local repo, Git, governance, Ollama, gates, and history.
 2. Produce a readiness diagnosis with blockers, warnings, gates, model health, and suggested microcycles.
-3. Produce a work package with files, steps, tests, acceptance criteria, and stop conditions.
-4. Produce a context pack with bounded, sanitized local snippets for Ollama.
-5. Produce a brief/proposal for the local model without writing target files.
-6. Convert one approved local proposal into an `ImplementationDecision`.
-7. Produce a microplan with risk, surfaces, gates, and warnings.
-8. Produce a `PatchDraft` without writing target files.
-9. Review the draft with deterministic safety checks.
-10. Prevalidate controlled apply without writing: clean Git, safe branch, token state, and `git apply --check`.
-11. Run only declared gates from `package.json`.
-12. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
-13. Never push automatically.
+3. Produce a supervised evolution plan: score candidates, reject forbidden flags, choose one microprocess or stop.
+4. Produce a work package with files, steps, tests, acceptance criteria, and stop conditions.
+5. Produce a context pack with bounded, sanitized local snippets for Ollama.
+6. Produce a brief/proposal for the local model without writing target files.
+7. Convert one approved local proposal into an `ImplementationDecision`.
+8. Produce a microplan with risk, surfaces, gates, and warnings.
+9. Produce a `PatchDraft` without writing target files.
+10. Review the draft with deterministic safety checks.
+11. Prevalidate controlled apply without writing: clean Git, safe branch, token state, and `git apply --check`.
+12. Run only declared gates from `package.json`.
+13. Apply only in v0.3+ with clean Git, safe branch, approved review, confirmation token, and no red risk.
+14. Never push automatically.
 
 ## Gates
 

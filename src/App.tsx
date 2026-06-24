@@ -23,6 +23,7 @@ import {
   getDevelopmentContextPack,
   getDevelopmentReadiness,
   getDevelopmentWorkPackage,
+  getEvolutionPlan,
   getImplementationDecision,
   getOllamaStatus,
   inspectRepository,
@@ -43,6 +44,7 @@ import type {
   DevelopmentContextPack,
   DevelopmentReadiness,
   DevelopmentWorkPackage,
+  EvolutionPlan,
   GateResult,
   ImplementationDecision,
   MicroPlan,
@@ -59,7 +61,7 @@ import type { AgentNarrative, NarrativeTone } from "./lib/narrative";
 import { cn } from "./lib/utils";
 
 const defaultRepo = "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis";
-const tabs = ["repo", "preparacion", "paquete", "contexto", "brief", "decision", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
+const tabs = ["repo", "preparacion", "evolucion", "paquete", "contexto", "brief", "decision", "microproceso", "reporte", "plan", "patch", "gates", "bitacora"] as const;
 type Tab = (typeof tabs)[number];
 type MicroStepStatus = "pending" | "running" | "completed" | "blocked" | "failed";
 type MicroStep = {
@@ -71,6 +73,7 @@ type MicroStep = {
 
 const initialMicroSteps: MicroStep[] = [
   { id: "inspect", label: "Inspeccion", status: "pending", detail: "Sin ejecutar." },
+  { id: "evolution", label: "Evolucion", status: "pending", detail: "Sin ejecutar." },
   { id: "package", label: "Paquete", status: "pending", detail: "Sin ejecutar." },
   { id: "context", label: "Contexto", status: "pending", detail: "Sin ejecutar." },
   { id: "brief", label: "Brief", status: "pending", detail: "Sin ejecutar." },
@@ -90,6 +93,7 @@ function App() {
   const [readiness, setReadiness] = useState<DevelopmentReadiness | null>(null);
   const [workPackage, setWorkPackage] = useState<DevelopmentWorkPackage | null>(null);
   const [contextPack, setContextPack] = useState<DevelopmentContextPack | null>(null);
+  const [evolution, setEvolution] = useState<EvolutionPlan | null>(null);
   const [brief, setBrief] = useState<DevelopmentBrief | null>(null);
   const [decision, setDecision] = useState<ImplementationDecision | null>(null);
   const [plan, setPlan] = useState<MicroPlan | null>(null);
@@ -150,6 +154,20 @@ function App() {
       const nextPlan = await planMicrocycle(repoPath, objective);
       setPlan(nextPlan);
       setActiveTab("plan");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function createEvolutionPlan() {
+    setBusy("evolution");
+    setError(null);
+    try {
+      const nextEvolution = await getEvolutionPlan(repoPath, objective);
+      setEvolution(nextEvolution);
+      setActiveTab("evolucion");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -297,6 +315,15 @@ function App() {
       setRuns(history);
       setReadiness(ready);
       markMicroStep("inspect", repo.blocks.length > 0 ? "blocked" : "completed", repo.blocks[0] ?? `${repo.projectName} en ${repo.currentBranch}.`);
+
+      markMicroStep("evolution", "running", "Puntuando candidatos de evolucion supervisada.");
+      const nextEvolution = await getEvolutionPlan(repoPath, objective);
+      setEvolution(nextEvolution);
+      markMicroStep(
+        "evolution",
+        nextEvolution.status === "ready" ? "completed" : nextEvolution.status === "blocked" ? "blocked" : "completed",
+        nextEvolution.selectedCandidate?.title ?? nextEvolution.summary,
+      );
 
       markMicroStep("package", "running", "Preparando paquete de trabajo.");
       const nextPackage = await getDevelopmentWorkPackage(repoPath, objective);
@@ -469,6 +496,10 @@ function App() {
                   <BrainCircuit className="mr-2 h-4 w-4" />
                   {busy === "plan" ? "Planificando..." : "Plan"}
                 </Button>
+                <Button variant="secondary" onClick={createEvolutionPlan} disabled={busy !== null}>
+                  <Activity className="mr-2 h-4 w-4" />
+                  {busy === "evolution" ? "Evolucion..." : "Evolucion"}
+                </Button>
                 <Button variant="secondary" onClick={createDraft} disabled={busy !== null}>
                   <FileText className="mr-2 h-4 w-4" />
                   {busy === "draft" ? "Generando..." : "PatchDraft"}
@@ -516,6 +547,7 @@ function App() {
 
         {activeTab === "repo" && <RepoTab inspection={inspection} ollama={ollama} />}
         {activeTab === "preparacion" && <ReadinessTab readiness={readiness} />}
+        {activeTab === "evolucion" && <EvolutionTab evolution={evolution} />}
         {activeTab === "paquete" && <WorkPackageTab workPackage={workPackage} />}
         {activeTab === "contexto" && <ContextPackTab contextPack={contextPack} />}
         {activeTab === "brief" && <BriefTab brief={brief} />}
@@ -737,6 +769,81 @@ function ReadinessTab({ readiness }: { readiness: DevelopmentReadiness | null })
                 <h3 className="mt-2 text-sm font-semibold break-words">{item.title}</h3>
                 <p className="mt-1 text-sm text-muted-foreground break-words">{item.objective}</p>
                 <p className="mt-1 text-xs text-muted-foreground break-words">{item.reason}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
+function EvolutionTab({ evolution }: { evolution: EvolutionPlan | null }) {
+  if (!evolution) return <Empty text="Sin evolucion supervisada. Presiona Evolucion para elegir el proximo microproceso puntuado." />;
+  const selected = evolution.selectedCandidate;
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card title="Evolucion Supervisada" description="Elige un microproceso local, pequeno y verificable antes de PatchDraft.">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={evolutionTone(evolution.status)}>{evolutionStatusLabel(evolution.status)}</Badge>
+          <Badge>{evolution.rankedCandidates.length} candidatos</Badge>
+          {selected && <Badge tone={riskTone(selected.riskLevel)}>Riesgo {selected.riskLevel}</Badge>}
+        </div>
+        <p className="mt-3 text-sm leading-6 break-words">{evolution.summary}</p>
+        <HelpText label="Frontera local" value={evolution.localOnlyBoundary} />
+        {selected ? (
+          <div className="mt-3 rounded border border-border bg-background px-3 py-2 text-sm">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="success">seleccionado</Badge>
+              <Badge>{dimensionLabel(selected.dimension)}</Badge>
+              <Badge>{selected.source}</Badge>
+            </div>
+            <h3 className="mt-2 text-base font-semibold break-words">{selected.title}</h3>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground break-words">{selected.objective}</p>
+            <HelpText label="Mejora esperada" value={selected.expectedImprovement} />
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold">Archivos sugeridos</h4>
+                <List items={selected.filesToInspect} empty="Sin archivos sugeridos." />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold">Gates</h4>
+                <List items={selected.gates} empty="Sin gates disponibles." />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <Empty text="No hay candidato ejecutable. Revisa bloqueos, warnings o gates faltantes." />
+        )}
+      </Card>
+
+      <div className="grid gap-4">
+        <Card title="Bloqueos Y Siguientes Pasos" description="Acciones concretas antes de avanzar.">
+          <List items={evolution.blockers} tone="warning" empty="Sin bloqueos duros." />
+          <List items={evolution.warnings} tone="warning" empty="Sin warnings." />
+          <List items={evolution.nextActions} empty="Sin acciones siguientes." />
+        </Card>
+        <Card title="Ranking" description="Puntaje neto y veredicto de cada candidato.">
+          <div className="grid gap-3">
+            {evolution.rankedCandidates.map((item) => (
+              <div key={item.candidate.id} className="min-w-0 rounded border border-border bg-background px-3 py-2 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <Badge tone={evolutionVerdictTone(item.score.verdict)}>{evolutionVerdictLabel(item.score.verdict)}</Badge>
+                  <Badge>{dimensionLabel(item.candidate.dimension)}</Badge>
+                  <Badge>score {item.score.netScore}</Badge>
+                  <Badge tone={riskTone(item.candidate.riskLevel)}>riesgo {item.candidate.riskLevel}</Badge>
+                </div>
+                <h3 className="mt-2 text-sm font-semibold break-words">{item.candidate.title}</h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground break-words">{item.candidate.objective}</p>
+                <List items={item.score.reasons} tone={item.score.verdict === "blocked" ? "warning" : "neutral"} />
+                <div className="mt-2 grid gap-2">
+                  {item.score.dimensionScores.map((score) => (
+                    <div key={`${item.candidate.id}-${score.dimension}`} className="min-w-0 rounded border border-border px-2 py-1 text-xs">
+                      <span className="font-medium break-words">{dimensionLabel(score.dimension)}: {score.score}</span>
+                      <p className="mt-1 text-muted-foreground break-words">{score.reason}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -1159,6 +1266,7 @@ function tabLabel(tab: Tab) {
   const labels: Record<Tab, string> = {
     repo: "Repo",
     preparacion: "Preparacion",
+    evolucion: "Evolucion",
     paquete: "Paquete",
     contexto: "Contexto",
     brief: "Brief",
@@ -1177,6 +1285,52 @@ function riskTone(risk: string) {
   if (risk === "red") return "danger";
   if (risk === "yellow") return "warning";
   return "success";
+}
+
+function evolutionTone(status: string) {
+  if (status === "ready") return "success";
+  if (status === "review_only") return "warning";
+  if (status === "blocked") return "danger";
+  return "neutral";
+}
+
+function evolutionStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    ready: "listo",
+    review_only: "solo revision",
+    blocked: "bloqueado",
+  };
+  return labels[status] ?? status;
+}
+
+function evolutionVerdictTone(verdict: string) {
+  if (verdict === "executable") return "success";
+  if (verdict === "review_only" || verdict === "rejected") return "warning";
+  if (verdict === "blocked") return "danger";
+  return "neutral";
+}
+
+function evolutionVerdictLabel(verdict: string) {
+  const labels: Record<string, string> = {
+    executable: "ejecutable",
+    review_only: "solo revision",
+    rejected: "rechazado",
+    blocked: "bloqueado",
+  };
+  return labels[verdict] ?? verdict;
+}
+
+function dimensionLabel(dimension: string) {
+  const labels: Record<string, string> = {
+    objective_alignment: "alineacion al objetivo",
+    governance_fit: "gobernanza",
+    security: "seguridad",
+    clinical_truth: "verdad clinica",
+    executable_learning: "aprendizaje ejecutable",
+    anti_bloat: "anti-bloat",
+    ai_local: "IA local",
+  };
+  return labels[dimension] ?? dimension;
 }
 
 function applyReadinessTone(status: string) {

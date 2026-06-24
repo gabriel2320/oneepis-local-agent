@@ -118,6 +118,14 @@ pub fn build_implementation_decision(brief: &DevelopmentBrief) -> Implementation
     match brief.proposal.as_ref() {
         Some(proposal) if proposal.status == "proposed" => {
             selected_files = proposal.files_to_change.clone();
+            if selected_files.is_empty() {
+                selected_files = infer_selected_files_from_context(brief);
+                if !selected_files.is_empty() {
+                    warnings.push(
+                        "Archivos inferidos desde el contexto gobernado porque la propuesta local no declaro filesToChange.".to_string(),
+                    );
+                }
+            }
             implementation_steps = proposal.implementation_notes.clone();
             required_gates = if proposal.gates.is_empty() {
                 brief.gates.clone()
@@ -417,6 +425,46 @@ fn decision_next_actions(status: &str, blockers: &[String]) -> Vec<String> {
     }
 }
 
+fn infer_selected_files_from_context(brief: &DevelopmentBrief) -> Vec<String> {
+    let mut files = Vec::new();
+    for entry in &brief.context_files {
+        let (path, kind) = split_context_entry(entry);
+        if kind != "file" || !is_safe_inferred_path(&path) {
+            continue;
+        }
+        if !files.iter().any(|candidate| candidate == &path) {
+            files.push(path);
+        }
+        if files.len() >= 3 {
+            break;
+        }
+    }
+    files
+}
+
+fn split_context_entry(entry: &str) -> (String, String) {
+    let Some((path, rest)) = entry.rsplit_once(" (") else {
+        return (entry.to_string(), String::new());
+    };
+    (
+        path.to_string(),
+        rest.trim_end_matches(')').to_ascii_lowercase(),
+    )
+}
+
+fn is_safe_inferred_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    !path.trim().is_empty()
+        && !path.contains("..")
+        && !path.contains(':')
+        && !lower.contains(".env")
+        && !lower.contains("secret")
+        && !lower.contains("credential")
+        && !lower.ends_with(".pem")
+        && !lower.ends_with(".pfx")
+        && !lower.ends_with(".key")
+}
+
 fn join_or_empty(items: &[String]) -> String {
     if items.is_empty() {
         "sin_gate".to_string()
@@ -605,6 +653,32 @@ mod tests {
             .next_actions
             .iter()
             .any(|action| action.contains("PatchDraft")));
+    }
+
+    #[test]
+    fn decision_infers_files_from_context_when_proposal_omits_them() {
+        let package = package("ready_to_draft");
+        let context = context("ready");
+        let proposal = LocalModelProposal {
+            status: "proposed".to_string(),
+            model_used: "qwen3:8b".to_string(),
+            summary: "Actualizar guia gobernada.".to_string(),
+            files_to_change: Vec::new(),
+            implementation_notes: vec!["Agregar criterio pequeno.".to_string()],
+            risks: Vec::new(),
+            gates: vec!["check:size".to_string()],
+            raw_response: "{}".to_string(),
+        };
+        let brief = build_development_brief(&package, &context, Some(proposal));
+
+        let decision = build_implementation_decision(&brief);
+
+        assert_eq!(decision.status, "ready_to_draft");
+        assert_eq!(decision.selected_files, vec!["AGENTS.md".to_string()]);
+        assert!(decision
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("inferidos desde el contexto")));
     }
 
     #[test]

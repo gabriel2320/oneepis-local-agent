@@ -217,6 +217,63 @@ pub struct ImplementationDecision {
     pub next_actions: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvolutionCandidate {
+    pub id: String,
+    pub title: String,
+    pub objective: String,
+    pub dimension: String,
+    pub risk_level: String,
+    pub files_to_inspect: Vec<String>,
+    pub gates: Vec<String>,
+    pub expected_improvement: String,
+    pub forbidden_flags: Vec<String>,
+    pub requires_human_review: bool,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvolutionDimensionScore {
+    pub dimension: String,
+    pub score: i32,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvolutionScore {
+    pub candidate_id: String,
+    pub dimension_scores: Vec<EvolutionDimensionScore>,
+    pub risk_penalty: i32,
+    pub bloat_penalty: i32,
+    pub net_score: i32,
+    pub verdict: String,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RankedEvolutionCandidate {
+    pub candidate: EvolutionCandidate,
+    pub score: EvolutionScore,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvolutionPlan {
+    pub repo_path: String,
+    pub status: String,
+    pub summary: String,
+    pub selected_candidate: Option<EvolutionCandidate>,
+    pub ranked_candidates: Vec<RankedEvolutionCandidate>,
+    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
+    pub next_actions: Vec<String>,
+    pub local_only_boundary: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MicroPlan {

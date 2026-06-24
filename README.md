@@ -46,6 +46,7 @@ npm run agent -- work-package "C:\\Users\\gdela\\OneDrive\\Documentos Importante
 npm run agent -- context-pack "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Reducir un archivo clinico near-limit"
 npm run agent -- brief "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Reducir un archivo clinico near-limit" --ask-model
 npm run agent -- decision "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Reducir un archivo clinico near-limit" --ask-model
+npm run agent -- evolution-plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Elegir el siguiente microproceso supervisado"
 npm run agent -- ollama
 npm run agent -- plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Auditar siguiente microciclo"
 npm run agent -- draft "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --objective "Preparar PatchDraft"
@@ -110,11 +111,13 @@ El workflow `.github/workflows/ci.yml` ejecuta `npm run check` en cada push a `m
 ## Estados Del Ciclo
 
 ```text
-preflight -> governance_read -> repo_audit -> work_package -> context_pack
--> development_brief -> implementation_decision -> micro_plan -> patch_draft
+preflight -> governance_read -> repo_audit -> evolution_plan -> work_package
+-> context_pack -> development_brief -> implementation_decision -> micro_plan -> patch_draft
 -> safety_review -> apply_patch -> gate_run -> result_record
 -> lesson_record -> stop_or_next
 ```
+
+La capa de evolucion supervisada se ejecuta antes de convertir el objetivo en paquete/patch: puntua candidatos, elige un solo microproceso local y deja visible si el resultado es `ready`, `review_only` o `blocked`.
 
 ## Adaptador OneEpis
 
@@ -138,11 +141,13 @@ La pantalla principal mantiene una voz operativa del agente:
 - convierte el contexto en un `DevelopmentBrief`: prompts, contrato JSON, propuesta local opcional y condiciones de parada.
 - convierte la propuesta local en una `ImplementationDecision`: una sola intencion lista para PatchDraft o un bloqueo explicito.
 - genera un `AgentRunReport` en Markdown para PR: estados, checklist, warnings, acciones siguientes, gate recomendado y lecciones del microproceso.
+- calcula un `EvolutionPlan`: ranking de candidatos, puntaje neto, veredicto, frontera local y siguiente microproceso recomendado.
+- repara propuestas locales incompletas infiriendo hasta 3 archivos seguros desde el contexto gobernado cuando Ollama omite `filesToChange`.
 
 Este sistema no aumenta permisos por fuera de gobernanza. Da mas claridad y coordina mejor los ciclos cerrados:
 
 ```text
-inspeccionar -> paquete -> contexto -> brief IA -> planificar
+inspeccionar -> evolucion -> paquete -> contexto -> brief IA -> planificar
 -> decision -> preparar PatchDraft -> revisar safety -> ejecutar gate declarado
 -> registrar resultado -> detener
 ```
@@ -164,6 +169,7 @@ Estado actual:
 - `DevelopmentContextPack` con extractos locales sanitizados, limites de bytes, warnings, gates y notas de prompt para Ollama.
 - `DevelopmentBrief` con orden de trabajo, prompts, contrato de respuesta y propuesta estructurada opcional desde Ollama.
 - `ImplementationDecision` con archivos seleccionados, pasos, gates, aceptacion, bloqueos y siguiente accion antes de PatchDraft.
+- `EvolutionPlan` con candidato seleccionado, ranking puntuado, dimensiones, veredicto, bloqueos, warnings y frontera local sin escritura.
 - `AgentRunReport` con Markdown revisable para PR y microprocesos cerrados.
 - `ApplyReadiness` para prevalidar apply v0.3 sin escribir: token requerido, rama segura, checks, bloqueos y siguientes acciones.
 - Gates declarados por `package.json`.

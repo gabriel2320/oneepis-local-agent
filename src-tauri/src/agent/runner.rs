@@ -2,6 +2,7 @@ use crate::agent::brief::{
     build_development_brief, build_implementation_decision, development_brief,
 };
 use crate::agent::context_pack::build_development_context_pack;
+use crate::agent::evolution::evolution_plan;
 use crate::agent::governance::apply_oneepis_governance;
 use crate::agent::ollama::ask_for_micro_plan;
 use crate::agent::persistence::record_run;
@@ -9,7 +10,7 @@ use crate::agent::repo::inspect_repository;
 use crate::agent::safety::{sanitize_log, sha256_hex};
 use crate::agent::types::{
     AgentRun, AgentRunReport, AgentStep, DevelopmentBrief, DevelopmentContextPack,
-    DevelopmentWorkPackage, ImplementationDecision, MicroPlan, RunRequest,
+    DevelopmentWorkPackage, EvolutionPlan, ImplementationDecision, MicroPlan, RunRequest,
 };
 use crate::agent::work_package::development_work_package;
 use chrono::Utc;
@@ -19,6 +20,7 @@ const STATES: &[&str] = &[
     "preflight",
     "governance_read",
     "repo_audit",
+    "evolution_plan",
     "work_package",
     "context_pack",
     "development_brief",
@@ -58,6 +60,7 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
         || request.branch_strategy != "reuse";
     let started_at = Utc::now().to_rfc3339();
     let inspection = inspect_repository(&request.repo_path)?;
+    let evolution = evolution_plan(&request.repo_path, &request.objective, None).await?;
     let package = development_work_package(&request.repo_path, &request.objective, None).await?;
     let context = build_development_context_pack(Path::new(&inspection.repo_path), &package);
     let brief = if request.ask_model {
@@ -72,13 +75,16 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
         || context.status == "blocked"
         || brief.status == "blocked"
         || decision.status == "blocked"
+        || evolution.status == "blocked"
         || !inspection.blocks.is_empty()
         || mode != "dry_run"
         || apply_requested;
     let mut steps = Vec::new();
 
     for (index, state) in STATES.iter().enumerate() {
-        let status = if *state == "implementation_decision" && decision.status == "blocked" {
+        let status = if *state == "evolution_plan" && evolution.status == "blocked" {
+            "blocked"
+        } else if *state == "implementation_decision" && decision.status == "blocked" {
             "blocked"
         } else {
             state_status(state, blocked, &mode)
@@ -92,6 +98,7 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
                 &inspection,
                 &package,
                 &context,
+                &evolution,
                 &brief,
                 &decision,
                 &plan,
@@ -115,8 +122,8 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
         );
     }
     lessons.push(format!(
-        "Paquete={}, contexto={}, brief={}, decision={}.",
-        package.status, context.status, brief.status, decision.status
+        "Evolucion={}, paquete={}, contexto={}, brief={}, decision={}.",
+        evolution.status, package.status, context.status, brief.status, decision.status
     ));
     if max_cycles > 1 {
         lessons.push(format!(
@@ -380,6 +387,7 @@ fn state_summary(
     inspection: &crate::agent::types::RepoInspection,
     package: &DevelopmentWorkPackage,
     context: &DevelopmentContextPack,
+    evolution: &EvolutionPlan,
     brief: &DevelopmentBrief,
     decision: &ImplementationDecision,
     plan: &MicroPlan,
@@ -404,6 +412,29 @@ fn state_summary(
                 "Worktree sucio; bloqueo preventivo activado.".to_string()
             } else {
                 "Worktree limpio para planificar.".to_string()
+            }
+        }
+        "evolution_plan" => {
+            if let Some(candidate) = &evolution.selected_candidate {
+                let score = evolution
+                    .ranked_candidates
+                    .iter()
+                    .find(|item| item.candidate.id == candidate.id)
+                    .map(|item| item.score.net_score)
+                    .unwrap_or_default();
+                format!(
+                    "Evolucion {}: {} con score {} y gates {}.",
+                    evolution.status,
+                    candidate.title,
+                    score,
+                    join_or_empty(&candidate.gates)
+                )
+            } else {
+                format!(
+                    "Evolucion {} sin candidato ejecutable; bloqueos: {}.",
+                    evolution.status,
+                    evolution.blockers.len()
+                )
             }
         }
         "work_package" => format!(
@@ -532,6 +563,14 @@ mod tests {
 
     #[test]
     fn runner_states_include_context_brief_and_decision_before_patch() {
+        let audit_index = STATES
+            .iter()
+            .position(|state| *state == "repo_audit")
+            .expect("audit state");
+        let evolution_index = STATES
+            .iter()
+            .position(|state| *state == "evolution_plan")
+            .expect("evolution state");
         let work_index = STATES
             .iter()
             .position(|state| *state == "work_package")
@@ -553,6 +592,8 @@ mod tests {
             .position(|state| *state == "patch_draft")
             .expect("patch state");
 
+        assert!(audit_index < evolution_index);
+        assert!(evolution_index < work_index);
         assert!(work_index < context_index);
         assert!(context_index < brief_index);
         assert!(brief_index < decision_index);
