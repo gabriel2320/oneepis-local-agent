@@ -110,7 +110,8 @@ El workflow `.github/workflows/ci.yml` ejecuta `npm run check` en cada push a `m
 ## Estados Del Ciclo
 
 ```text
-preflight -> governance_read -> repo_audit -> micro_plan -> patch_draft
+preflight -> governance_read -> repo_audit -> work_package -> context_pack
+-> development_brief -> implementation_decision -> micro_plan -> patch_draft
 -> safety_review -> apply_patch -> gate_run -> result_record
 -> lesson_record -> stop_or_next
 ```
@@ -168,4 +169,4 @@ Estado actual:
 - Gates declarados por `package.json`.
 - Lenguaje natural de estado, ayudas accionables y autonomia gobernada visible en UI.
 - Bitacora PostgreSQL opcional.
-- Runner dry-run con maquina de estados cerrada que registra paquete, contexto, brief, plan, PatchDraft, safety y parada.
+- Runner dry-run con maquina de estados cerrada que registra paquete, contexto, brief, decision, plan, PatchDraft, safety y parada.

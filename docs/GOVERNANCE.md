@@ -15,7 +15,8 @@ OneEpis Local Agent es un laboratorio externo. Puede trabajar sobre OneEpis, per
 ## Estados del ciclo
 
 ```text
-preflight -> governance_read -> repo_audit -> micro_plan -> patch_draft
+preflight -> governance_read -> repo_audit -> work_package -> context_pack
+-> development_brief -> implementation_decision -> micro_plan -> patch_draft
 -> safety_review -> apply_patch -> gate_run -> result_record
 -> lesson_record -> stop_or_next
 ```

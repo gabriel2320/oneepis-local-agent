@@ -394,6 +394,8 @@ pub struct RunRequest {
     pub mode: Option<String>,
     pub database_url: Option<String>,
     #[serde(default)]
+    pub ask_model: bool,
+    #[serde(default)]
     pub allow_apply: bool,
     pub confirm_token: Option<String>,
     #[serde(default = "default_branch_strategy")]

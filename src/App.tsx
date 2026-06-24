@@ -74,6 +74,7 @@ const initialMicroSteps: MicroStep[] = [
   { id: "package", label: "Paquete", status: "pending", detail: "Sin ejecutar." },
   { id: "context", label: "Contexto", status: "pending", detail: "Sin ejecutar." },
   { id: "brief", label: "Brief", status: "pending", detail: "Sin ejecutar." },
+  { id: "decision", label: "Decision", status: "pending", detail: "Sin ejecutar." },
   { id: "plan", label: "Plan", status: "pending", detail: "Sin ejecutar." },
   { id: "draft", label: "PatchDraft", status: "pending", detail: "Sin ejecutar." },
   { id: "run", label: "Dry-run", status: "pending", detail: "Sin ejecutar." },
@@ -311,6 +312,15 @@ function App() {
       const nextBrief = await getDevelopmentBrief(repoPath, objective, true);
       setBrief(nextBrief);
       markMicroStep("brief", nextBrief.status === "blocked" ? "blocked" : "completed", nextBrief.proposal?.summary ?? nextBrief.summary);
+
+      markMicroStep("decision", "running", "Cerrando propuesta local como decision revisable.");
+      const nextDecision = await getImplementationDecision(repoPath, objective, true);
+      setDecision(nextDecision);
+      markMicroStep(
+        "decision",
+        nextDecision.status === "ready_to_draft" ? "completed" : "blocked",
+        nextDecision.blockers[0] ?? nextDecision.summary,
+      );
 
       markMicroStep("plan", "running", "Generando microplan gobernado.");
       const nextPlan = await planMicrocycle(repoPath, objective);

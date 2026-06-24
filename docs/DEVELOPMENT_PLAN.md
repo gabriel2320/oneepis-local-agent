@@ -21,7 +21,7 @@ The app is not part of the OneEpis clinical repo and must not move clinical trut
 - Review drafts with deterministic checks: risk, diff size, paths, gates, and blocked state.
 - List persisted runs from the optional `oneepis_agent` database.
 - Run declared package gates through typed commands only.
-- Record dry-run states for package, context pack, local brief, microplan, PatchDraft, safety, result, lessons, and stop condition.
+- Record dry-run states for package, context pack, local brief, implementation decision, microplan, PatchDraft, safety, result, lessons, and stop condition.
 - Explain every state in natural Spanish: current action, reason, next action, and active governance guardrail.
 - Keep help text operational and tied to cycle state, not marketing copy.
 - Provide `DevelopmentReadiness` before planning: repo readiness, Ollama/model health, required gates, blockers, next actions, and suggested microcycles.
@@ -112,5 +112,5 @@ Target repo gates are only run when they are declared in the target `package.jso
 - Every PR should document the closed microprocess it exercised: objective, preflight result, PatchDraft/review state, gate result, and stop condition.
 - Prefer attaching or pasting the generated `AgentRunReport` when the change updates agent behavior.
 - When a PR changes agent behavior, include the context-pack result or explain why no context pack was needed.
-- If the local model is invoked, include the brief/proposal status and the model used.
+- If the local model is invoked, include the brief/proposal status, implementation decision status, and the model used.
 - A blocked target repo is still a valid microprocess result when the block is explained and no target files are changed.

@@ -1,4 +1,6 @@
-use crate::agent::brief::build_development_brief;
+use crate::agent::brief::{
+    build_development_brief, build_implementation_decision, development_brief,
+};
 use crate::agent::context_pack::build_development_context_pack;
 use crate::agent::governance::apply_oneepis_governance;
 use crate::agent::ollama::ask_for_micro_plan;
@@ -7,7 +9,7 @@ use crate::agent::repo::inspect_repository;
 use crate::agent::safety::{sanitize_log, sha256_hex};
 use crate::agent::types::{
     AgentRun, AgentRunReport, AgentStep, DevelopmentBrief, DevelopmentContextPack,
-    DevelopmentWorkPackage, MicroPlan, RunRequest,
+    DevelopmentWorkPackage, ImplementationDecision, MicroPlan, RunRequest,
 };
 use crate::agent::work_package::development_work_package;
 use chrono::Utc;
@@ -20,6 +22,7 @@ const STATES: &[&str] = &[
     "work_package",
     "context_pack",
     "development_brief",
+    "implementation_decision",
     "micro_plan",
     "patch_draft",
     "safety_review",
@@ -57,19 +60,29 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
     let inspection = inspect_repository(&request.repo_path)?;
     let package = development_work_package(&request.repo_path, &request.objective, None).await?;
     let context = build_development_context_pack(Path::new(&inspection.repo_path), &package);
-    let brief = build_development_brief(&package, &context, None);
+    let brief = if request.ask_model {
+        development_brief(&request.repo_path, &request.objective, true, None).await?
+    } else {
+        build_development_brief(&package, &context, None)
+    };
+    let decision = build_implementation_decision(&brief);
     let plan = plan_microcycle(&request.repo_path, &request.objective, None).await?;
     let blocked = plan.blocked
         || package.status == "blocked"
         || context.status == "blocked"
         || brief.status == "blocked"
+        || decision.status == "blocked"
         || !inspection.blocks.is_empty()
         || mode != "dry_run"
         || apply_requested;
     let mut steps = Vec::new();
 
     for (index, state) in STATES.iter().enumerate() {
-        let status = state_status(state, blocked, &mode);
+        let status = if *state == "implementation_decision" && decision.status == "blocked" {
+            "blocked"
+        } else {
+            state_status(state, blocked, &mode)
+        };
         steps.push(AgentStep {
             order: index + 1,
             state: state.to_string(),
@@ -80,6 +93,7 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
                 &package,
                 &context,
                 &brief,
+                &decision,
                 &plan,
                 max_cycles,
                 &mode,
@@ -101,8 +115,8 @@ pub async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
         );
     }
     lessons.push(format!(
-        "Paquete={}, contexto={}, brief={}.",
-        package.status, context.status, brief.status
+        "Paquete={}, contexto={}, brief={}, decision={}.",
+        package.status, context.status, brief.status, decision.status
     ));
     if max_cycles > 1 {
         lessons.push(format!(
@@ -367,6 +381,7 @@ fn state_summary(
     package: &DevelopmentWorkPackage,
     context: &DevelopmentContextPack,
     brief: &DevelopmentBrief,
+    decision: &ImplementationDecision,
     plan: &MicroPlan,
     max_cycles: u8,
     mode: &str,
@@ -414,6 +429,14 @@ fn state_summary(
                 .map(|proposal| proposal.status.as_str())
                 .unwrap_or("no solicitada")
         ),
+        "implementation_decision" => format!(
+            "Decision {} desde propuesta {}; {} archivo(s), gates: {}, bloqueos: {}.",
+            decision.status,
+            decision.source_proposal_status,
+            decision.selected_files.len(),
+            join_or_empty(&decision.required_gates),
+            decision.blockers.len()
+        ),
         "micro_plan" => format!(
             "Plan generado con modelo {}; gate recomendado {}.",
             plan.model_used, plan.recommended_gate
@@ -424,6 +447,8 @@ fn state_summary(
         "safety_review" => {
             if mode != "dry_run" {
                 "Modo controlado bloqueado hasta v0.3.".to_string()
+            } else if decision.status == "blocked" {
+                "Decision de implementacion bloqueada; no se prepara PatchDraft/apply.".to_string()
             } else if plan.blocked {
                 "Plan bloqueado por gobernanza o estado del repo.".to_string()
             } else {
@@ -506,7 +531,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runner_states_include_context_and_brief_before_patch() {
+    fn runner_states_include_context_brief_and_decision_before_patch() {
         let work_index = STATES
             .iter()
             .position(|state| *state == "work_package")
@@ -519,6 +544,10 @@ mod tests {
             .iter()
             .position(|state| *state == "development_brief")
             .expect("brief state");
+        let decision_index = STATES
+            .iter()
+            .position(|state| *state == "implementation_decision")
+            .expect("decision state");
         let patch_index = STATES
             .iter()
             .position(|state| *state == "patch_draft")
@@ -526,7 +555,8 @@ mod tests {
 
         assert!(work_index < context_index);
         assert!(context_index < brief_index);
-        assert!(brief_index < patch_index);
+        assert!(brief_index < decision_index);
+        assert!(decision_index < patch_index);
     }
 
     #[test]
@@ -534,6 +564,10 @@ mod tests {
         assert_eq!(state_status("context_pack", true, "dry_run"), "completed");
         assert_eq!(
             state_status("development_brief", true, "dry_run"),
+            "completed"
+        );
+        assert_eq!(
+            state_status("implementation_decision", true, "dry_run"),
             "completed"
         );
         assert_eq!(state_status("safety_review", true, "dry_run"), "blocked");

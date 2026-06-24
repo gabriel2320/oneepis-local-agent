@@ -51,7 +51,7 @@ export function planMicrocycle(repoPath: string, objective: string, baseUrl?: st
   return invoke<MicroPlan>("plan_microcycle", { repoPath, objective, baseUrl });
 }
 
-export function runMicrocycle(repoPath: string, objective: string, maxCycles: number) {
+export function runMicrocycle(repoPath: string, objective: string, maxCycles: number, askModel = false) {
   return invoke<AgentRun>("run_microcycle", {
     request: {
       repoPath,
@@ -59,6 +59,7 @@ export function runMicrocycle(repoPath: string, objective: string, maxCycles: nu
       maxCycles,
       mode: "dry_run",
       databaseUrl: null,
+      askModel,
       allowApply: false,
       confirmToken: null,
       branchStrategy: "reuse",
@@ -66,7 +67,7 @@ export function runMicrocycle(repoPath: string, objective: string, maxCycles: nu
   });
 }
 
-export function runMicrocycleReport(repoPath: string, objective: string) {
+export function runMicrocycleReport(repoPath: string, objective: string, askModel = true) {
   return invoke<AgentRunReport>("run_microcycle_report", {
     request: {
       repoPath,
@@ -74,6 +75,7 @@ export function runMicrocycleReport(repoPath: string, objective: string) {
       maxCycles: 1,
       mode: "dry_run",
       databaseUrl: null,
+      askModel,
       allowApply: false,
       confirmToken: null,
       branchStrategy: "reuse",
