@@ -1,7 +1,16 @@
+pub mod brief;
+pub mod context_pack;
+pub mod evolution;
+pub mod gates;
+pub mod governance;
+pub mod local_problems;
 pub mod ollama;
+pub mod patch;
 pub mod persistence;
+pub mod readiness;
 pub mod repo;
 pub mod runner;
 pub mod safety;
+pub mod training;
 pub mod types;
-
+pub mod work_package;

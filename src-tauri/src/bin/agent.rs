@@ -1,10 +1,23 @@
 #[path = "../agent/mod.rs"]
 mod agent;
 
+use agent::brief;
+use agent::context_pack;
+use agent::evolution;
+use agent::gates;
+use agent::local_problems;
 use agent::ollama;
+use agent::patch;
+use agent::persistence;
+use agent::readiness;
 use agent::repo;
 use agent::runner;
-use agent::types::RunRequest;
+use agent::training;
+use agent::types::{
+    ApplyPatchRequest, LocalProblemRequest, PatchDraft, RunRequest, TrainingRequest,
+};
+use agent::work_package;
+use std::fs;
 
 #[tokio::main]
 async fn main() {
@@ -28,11 +41,176 @@ async fn run() -> Result<(), String> {
         "ollama" => {
             print_json(&ollama::get_ollama_status(None).await?)?;
         }
+        "readiness" => {
+            let repo_path = required_repo(&args)?;
+            print_json(&readiness::development_readiness(repo_path, None).await?)?;
+        }
+        "work-package" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Preparar paquete de trabajo gobernado para OneEpis.");
+            print_json(&work_package::development_work_package(repo_path, objective, None).await?)?;
+        }
+        "context-pack" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Preparar contexto local gobernado para OneEpis.");
+            print_json(&context_pack::development_context_pack(repo_path, objective, None).await?)?;
+        }
+        "brief" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Preparar brief local gobernado para OneEpis.");
+            let ask_model = args.iter().any(|arg| arg == "--ask-model");
+            print_json(&brief::development_brief(repo_path, objective, ask_model, None).await?)?;
+        }
+        "decision" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Preparar decision de implementacion gobernada para OneEpis.");
+            let ask_model = args.iter().any(|arg| arg == "--ask-model");
+            print_json(
+                &brief::implementation_decision(repo_path, objective, ask_model, None).await?,
+            )?;
+        }
+        "evolution-plan" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Elegir el siguiente microproceso de evolucion supervisada.");
+            print_json(&evolution::evolution_plan(repo_path, objective, None).await?)?;
+        }
         "plan" => {
             let repo_path = required_repo(&args)?;
             let objective = option_value(&args, "--objective")
                 .unwrap_or("Auditar y proponer el microciclo gobernado mas pequeno.");
             print_json(&runner::plan_microcycle(repo_path, objective, None).await?)?;
+        }
+        "draft" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Generar PatchDraft gobernado sin escribir archivos.");
+            print_json(&patch::draft_patch(repo_path, objective, None, None).await?)?;
+        }
+        "review" => {
+            let draft = required_draft_file(&args)?;
+            print_json(&patch::review_patch(&draft)?)?;
+        }
+        "prepare-apply" => {
+            let draft = required_draft_file(&args)?;
+            let confirm_token = option_value(&args, "--confirm-token").map(ToString::to_string);
+            let branch_strategy = option_value(&args, "--branch-strategy")
+                .unwrap_or("create_safe_branch")
+                .to_string();
+            let request = ApplyPatchRequest {
+                draft,
+                allow_apply: true,
+                confirm_token,
+                branch_strategy,
+                database_url: None,
+            };
+            print_json(&patch::prepare_apply_readiness(request)?)?;
+        }
+        "apply" => {
+            let draft = required_draft_file(&args)?;
+            let confirm_token = option_value(&args, "--confirm-token").map(ToString::to_string);
+            let branch_strategy = option_value(&args, "--branch-strategy")
+                .unwrap_or("create_safe_branch")
+                .to_string();
+            let request = ApplyPatchRequest {
+                draft,
+                allow_apply: true,
+                confirm_token,
+                branch_strategy,
+                database_url: None,
+            };
+            print_json(&patch::apply_approved_patch(request).await?)?;
+        }
+        "gate" => {
+            let repo_path = required_repo(&args)?;
+            let gate = option_value(&args, "--gate").unwrap_or("check");
+            print_json(&gates::run_gate(repo_path, gate, None, None).await?)?;
+        }
+        "list-runs" => {
+            let limit = option_value(&args, "--limit").and_then(|value| value.parse::<i64>().ok());
+            print_json(&persistence::list_runs(None, limit).await?)?;
+        }
+        "local-problems" => {
+            print_json(&local_problems::list_local_problems())?;
+        }
+        "local-problem-plan" => {
+            let repo_path = required_repo(&args)?;
+            let problem_id = required_option(&args, "--problem")?;
+            print_json(&local_problems::local_problem_plan(LocalProblemRequest {
+                repo_path: repo_path.to_string(),
+                problem_id: problem_id.to_string(),
+            })?)?;
+        }
+        "local-problem-prepare" => {
+            let repo_path = required_repo(&args)?;
+            let problem_id = required_option(&args, "--problem")?;
+            print_json(
+                &local_problems::prepare_local_problem(LocalProblemRequest {
+                    repo_path: repo_path.to_string(),
+                    problem_id: problem_id.to_string(),
+                })
+                .await?,
+            )?;
+        }
+        "local-problem-commit" => {
+            let repo_path = required_repo(&args)?;
+            let problem_id = required_option(&args, "--problem")?;
+            print_json(
+                &local_problems::commit_local_problem(LocalProblemRequest {
+                    repo_path: repo_path.to_string(),
+                    problem_id: problem_id.to_string(),
+                })
+                .await?,
+            )?;
+        }
+        "local-problem-solve" => {
+            let repo_path = required_repo(&args)?;
+            let problem_id = required_option(&args, "--problem")?;
+            print_json(
+                &local_problems::solve_local_problem(LocalProblemRequest {
+                    repo_path: repo_path.to_string(),
+                    problem_id: problem_id.to_string(),
+                })
+                .await?,
+            )?;
+        }
+        "training-scenarios" => {
+            print_json(&training::list_training_scenarios())?;
+        }
+        "training-evaluate" => {
+            let repo_path = required_repo(&args)?;
+            print_json(&training::evaluate_training_scenarios(repo_path)?)?;
+        }
+        "training-plan" => {
+            let repo_path = required_repo(&args)?;
+            let scenario_id = required_option(&args, "--scenario")?;
+            let cycles = option_value(&args, "--cycles")
+                .and_then(|value| value.parse::<u8>().ok())
+                .unwrap_or(1);
+            print_json(&training::training_plan(TrainingRequest {
+                repo_path: repo_path.to_string(),
+                scenario_id: scenario_id.to_string(),
+                cycles,
+            })?)?;
+        }
+        "training-prepare" => {
+            let repo_path = required_repo(&args)?;
+            let scenario_id = required_option(&args, "--scenario")?;
+            let cycles = option_value(&args, "--cycles")
+                .and_then(|value| value.parse::<u8>().ok())
+                .unwrap_or(1);
+            print_json(
+                &training::prepare_training_scenario(TrainingRequest {
+                    repo_path: repo_path.to_string(),
+                    scenario_id: scenario_id.to_string(),
+                    cycles,
+                })
+                .await?,
+            )?;
         }
         "run" => {
             let repo_path = required_repo(&args)?;
@@ -41,14 +219,37 @@ async fn run() -> Result<(), String> {
                 .unwrap_or(1);
             let objective = option_value(&args, "--objective")
                 .unwrap_or("Ejecutar dry-run gobernado y registrar aprendizaje.");
+            let ask_model = args.iter().any(|arg| arg == "--ask-model");
             let request = RunRequest {
                 repo_path: repo_path.to_string(),
                 objective: objective.to_string(),
                 max_cycles: Some(max_cycles),
                 mode: Some("dry_run".to_string()),
                 database_url: None,
+                ask_model,
+                allow_apply: false,
+                confirm_token: None,
+                branch_strategy: "reuse".to_string(),
             };
             print_json(&runner::run_microcycle(request).await?)?;
+        }
+        "report" => {
+            let repo_path = required_repo(&args)?;
+            let objective = option_value(&args, "--objective")
+                .unwrap_or("Ejecutar dry-run gobernado y preparar reporte PR.");
+            let ask_model = args.iter().any(|arg| arg == "--ask-model");
+            let request = RunRequest {
+                repo_path: repo_path.to_string(),
+                objective: objective.to_string(),
+                max_cycles: Some(1),
+                mode: Some("dry_run".to_string()),
+                database_url: None,
+                ask_model,
+                allow_apply: false,
+                confirm_token: None,
+                branch_strategy: "reuse".to_string(),
+            };
+            print_json(&runner::run_microcycle_report(request).await?)?;
         }
         "stop" => {
             println!(
@@ -71,10 +272,24 @@ fn required_repo(args: &[String]) -> Result<&str, String> {
         .ok_or_else(|| "Falta ruta del repo objetivo.".to_string())
 }
 
+fn required_draft_file(args: &[String]) -> Result<PatchDraft, String> {
+    let path = args
+        .get(1)
+        .ok_or_else(|| "Falta ruta del archivo PatchDraft JSON.".to_string())?;
+    let text = fs::read_to_string(path)
+        .map_err(|err| format!("No se pudo leer PatchDraft JSON: {err}"))?;
+    serde_json::from_str::<PatchDraft>(&text)
+        .map_err(|err| format!("No se pudo parsear PatchDraft JSON: {err}"))
+}
+
 fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|window| window[0] == name)
         .map(|window| window[1].as_str())
+}
+
+fn required_option<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
+    option_value(args, name).ok_or_else(|| format!("Falta opcion requerida {name}."))
 }
 
 fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
@@ -86,8 +301,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent plan <repo> [--objective texto] | agent run <repo> [--max-cycles 1] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent readiness <repo> | agent work-package <repo> [--objective texto] | agent context-pack <repo> [--objective texto] | agent brief <repo> [--objective texto] [--ask-model] | agent decision <repo> [--objective texto] [--ask-model] | agent evolution-plan <repo> [--objective texto] | agent plan <repo> [--objective texto] | agent draft <repo> [--objective texto] | agent review <draft.json> | agent prepare-apply <draft.json> [--confirm-token token] | agent apply <draft.json> --confirm-token token | agent gate <repo> --gate check:size | agent list-runs [--limit 20] | agent local-problems | agent local-problem-plan <repo> --problem LOCAL-001 | agent local-problem-prepare <repo> --problem LOCAL-001 | agent local-problem-commit <repo> --problem LOCAL-001 | agent local-problem-solve <repo> --problem LOCAL-001 | agent training-scenarios | agent training-evaluate <repo> | agent training-plan <repo> --scenario TRAIN-001 [--cycles 1] | agent training-prepare <repo> --scenario TRAIN-001 [--cycles 1] | agent run <repo> [--max-cycles 1] [--ask-model] | agent report <repo> [--objective texto] [--ask-model] | agent ollama | agent stop"
             .to_string(),
     )
 }
-

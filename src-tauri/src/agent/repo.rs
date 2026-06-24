@@ -1,6 +1,7 @@
 use crate::agent::safety::{sanitize_log, sha256_hex};
 use crate::agent::types::{GovernanceDocument, RepoInspection};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -15,7 +16,8 @@ const GOVERNANCE_PATHS: &[&str] = &[
 
 pub fn inspect_repository(repo_path: &str) -> Result<RepoInspection, String> {
     let repo = canonical_repo(repo_path)?;
-    let is_git_repo = repo.join(".git").exists() || git(&repo, &["rev-parse", "--is-inside-work-tree"]).is_ok();
+    let is_git_repo =
+        repo.join(".git").exists() || git(&repo, &["rev-parse", "--is-inside-work-tree"]).is_ok();
     let status_text = if is_git_repo {
         git(&repo, &["status", "--short", "--branch"]).unwrap_or_else(|err| err)
     } else {
@@ -53,18 +55,30 @@ pub fn inspect_repository(repo_path: &str) -> Result<RepoInspection, String> {
         detected_rules.extend([
             "OneEpis adapter activo: leer AGENTS.md y docs/GOVERNANCE.md.".to_string(),
             "Preferir paciente/ficha/papel/API/PostgreSQL/auditoria/permisos/OpenAPI.".to_string(),
-            "No agregar dashboard, RAG, labs pegados al core, receta, firma ni IA protagonista sin plan explicito.".to_string(),
+            "Aplicar semaforo de cambio: verde micro-PR; amarillo requiere tests proporcionales; rojo requiere contrato primero.".to_string(),
+            "Usar el gate oficial mas pequeno por superficie: check:api, check:web, check:contract, check:e2e o check.".to_string(),
+            "Pantallas clinicas visibles requieren SCREEN_TREE y Screen Capability Registry.".to_string(),
+            "No agregar dashboard central, chat libre, RAG amplio, IA externa, receta valida, firma, orden ejecutable ni agenda productiva sin contrato explicito.".to_string(),
+            "Programa activo permitido: PROG-PATIENT-CORE-01 y nucleo paciente tradicional.".to_string(),
+            "Cada pasada debe dejar aprendizaje ejecutable: test, gate, contrato o tipo antes que documento nuevo.".to_string(),
         ]);
     }
 
     let mut blocks = Vec::new();
     if !is_git_repo {
-        blocks.push("El repo objetivo no es Git; el agente solo opera sobre repos Git.".to_string());
+        blocks
+            .push("El repo objetivo no es Git; el agente solo opera sobre repos Git.".to_string());
     }
     if dirty {
-        blocks.push("Worktree sucio detectado; no se permite aplicar cambios automaticos.".to_string());
+        blocks.push(
+            "Worktree sucio detectado; no se permite aplicar cambios automaticos.".to_string(),
+        );
     }
-    if is_one_epis && !governance_documents.iter().any(|doc| doc.path == "docs/GOVERNANCE.md" && doc.present) {
+    if is_one_epis
+        && !governance_documents
+            .iter()
+            .any(|doc| doc.path == "docs/GOVERNANCE.md" && doc.present)
+    {
         blocks.push("OneEpis sin docs/GOVERNANCE.md legible.".to_string());
     }
 
@@ -87,7 +101,7 @@ pub fn inspect_repository(repo_path: &str) -> Result<RepoInspection, String> {
     })
 }
 
-fn canonical_repo(repo_path: &str) -> Result<PathBuf, String> {
+pub(crate) fn canonical_repo(repo_path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(repo_path);
     if !path.exists() {
         return Err(format!("La ruta no existe: {repo_path}"));
@@ -136,22 +150,14 @@ fn governance_documents(repo: &Path) -> Vec<GovernanceDocument> {
 
 fn markdown_title(bytes: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(bytes);
-    text.lines()
-        .find_map(|line| line.strip_prefix("# ").map(|title| title.trim().to_string()))
+    text.lines().find_map(|line| {
+        line.strip_prefix("# ")
+            .map(|title| title.trim().to_string())
+    })
 }
 
-fn declared_gates(repo: &Path) -> Vec<String> {
-    let package_json = repo.join("package.json");
-    let Ok(text) = fs::read_to_string(package_json) else {
-        return Vec::new();
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&text) else {
-        return Vec::new();
-    };
-    let Some(scripts) = value.get("scripts").and_then(Value::as_object) else {
-        return Vec::new();
-    };
-
+pub(crate) fn declared_gates(repo: &Path) -> Vec<String> {
+    let scripts = package_scripts(repo);
     let mut gates: Vec<String> = scripts
         .keys()
         .filter(|key| {
@@ -164,6 +170,31 @@ fn declared_gates(repo: &Path) -> Vec<String> {
         .collect();
     gates.sort();
     gates
+}
+
+pub(crate) fn declared_gate_script(repo: &Path, gate: &str) -> Option<String> {
+    package_scripts(repo).remove(gate)
+}
+
+fn package_scripts(repo: &Path) -> BTreeMap<String, String> {
+    let package_json = repo.join("package.json");
+    let Ok(text) = fs::read_to_string(package_json) else {
+        return BTreeMap::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return BTreeMap::new();
+    };
+    let Some(scripts) = value.get("scripts").and_then(Value::as_object) else {
+        return BTreeMap::new();
+    };
+    scripts
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .as_str()
+                .map(|script| (key.clone(), script.to_string()))
+        })
+        .collect()
 }
 
 pub fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
@@ -192,4 +223,3 @@ mod tests {
         assert!(inspect_repository("Z:\\no-existe-oneepis-local-agent").is_err());
     }
 }
-
