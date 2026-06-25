@@ -2,7 +2,7 @@
   "name": "oneepis-local-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Mini Cursor local gobernado para microciclos de desarrollo con Ollama.",
+  "description": "Local OneEpis autopilot for governed Ollama-backed development gates.",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -34,4 +34,3 @@
     "vite": "^6.0.7"
   }
 }
-

@@ -3,7 +3,7 @@ mod agent;
 use agent::ollama;
 use agent::repo;
 use agent::runner;
-use agent::types::{AgentRun, MicroPlan, OllamaStatus, RepoInspection, RunRequest};
+use agent::types::{AgentRun, AutopilotRequest, MicroPlan, OllamaStatus, RepoInspection, RunRequest};
 
 #[tauri::command(rename_all = "camelCase")]
 fn inspect_repository(repo_path: String) -> Result<RepoInspection, String> {
@@ -29,15 +29,26 @@ async fn run_microcycle(request: RunRequest) -> Result<AgentRun, String> {
     runner::run_microcycle(request).await
 }
 
+#[tauri::command]
+async fn run_oneepis_autopilot(request: AutopilotRequest) -> Result<AgentRun, String> {
+    runner::run_oneepis_autopilot(request).await
+}
+
+#[tauri::command]
+async fn run_oneepis_dev_autopilot(request: AutopilotRequest) -> Result<AgentRun, String> {
+    runner::run_oneepis_dev_autopilot(request).await
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             inspect_repository,
             get_ollama_status,
             plan_microcycle,
-            run_microcycle
+            run_microcycle,
+            run_oneepis_autopilot,
+            run_oneepis_dev_autopilot
         ])
         .run(tauri::generate_context!())
         .expect("error while running OneEpis Local Agent");
 }
-

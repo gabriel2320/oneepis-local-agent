@@ -1,12 +1,12 @@
 # OneEpis Local Agent
 
-Mini Cursor local gobernado para microciclos de desarrollo con Ollama.
+Agente local para una sola tarea: clonar OneEpis en Windows, auditarlo con IA local cuando Ollama esta disponible, elegir el siguiente trabajo verificable y dejar una rama con commit local listo para revision humana.
 
 Este repo es una herramienta externa. No es OneEpis, no vive dentro de OneEpis y no reemplaza la gobernanza del repo objetivo.
 
 ## Principios
 
-- Ollama local es el unico proveedor IA.
+- Ollama local es el unico proveedor IA; si no esta disponible, se usa un plan deterministico local.
 - El agente lee gobernanza antes de proponer cambios.
 - La autonomia termina en cambios locales y commits locales; no hay push automatico.
 - El runner usa acciones tipadas, no shell libre generado por IA.
@@ -18,10 +18,35 @@ Este repo es una herramienta externa. No es OneEpis, no vive dentro de OneEpis y
 npm install
 npm run dev
 npm run check
+npm run agent -- autopilot --workspace "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
+npm run agent -- autopilot-dev --workspace "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- inspect "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- run "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --max-cycles 1
 ```
+
+`autopilot` hace el flujo completo:
+
+1. Crea o reutiliza el workspace local.
+2. Clona `https://github.com/gabriel2320/oneepis.git` si OneEpis no existe.
+3. Si el repo esta limpio, ejecuta `git fetch --prune origin` y `git pull --ff-only origin main`.
+4. Lee gobernanza y scripts del repo.
+5. Consulta Ollama local para microplan si esta disponible.
+6. Selecciona un gate local seguro, por ejemplo `npm run check:size`, `npm run check:api` o `npm run check`.
+7. Ejecuta el gate con proceso tipado, sin shell libre y sin push.
+
+`autopilot-dev` agrega una segunda fase controlada:
+
+1. Exige checkout limpio y vuelve a `main`.
+2. Selecciona una tarea verde local desde gobernanza y gates del repo.
+3. Pide a Ollama un `PatchPlan` JSON con reemplazos exactos de texto.
+4. Valida que el plan toque solo archivos permitidos, maximo 3 edits y ningun comando.
+5. Crea una rama local `agent/<task-id>-<hash>`.
+6. Aplica los reemplazos exactos.
+7. Corre el gate requerido.
+8. Crea commit local solo si el gate pasa.
+
+No hace `git push`, no abre PR remoto y no ejecuta shell generado por IA.
 
 ## Configuracion
 
@@ -45,13 +70,14 @@ URL local:
 AGENT_DATABASE_URL=postgresql://oneepis_agent:oneepis_agent@localhost:5444/oneepis_agent
 ```
 
-## Estado v0.1
+## Estado v0.3
 
 - Inspeccion de repo objetivo.
 - Deteccion OneEpis por `AGENTS.md` + `docs/GOVERNANCE.md`.
 - Estado Ollama y modelos por politica.
 - Plan de microciclo gobernado.
 - Bitacora PostgreSQL opcional.
-- Runner dry-run con maquina de estados cerrada.
+- Autopilot local controlado para clonar/actualizar OneEpis y ejecutar el siguiente gate local.
+- Autopilot de desarrollo para generar patch acotado con Ollama, validar y dejar commit local.
 
-La ejecucion con patches reales queda bloqueada hasta que los tests de v0.3 esten completos.
+La publicacion remota sigue bloqueada por diseno. El humano revisa el commit local y decide si crea PR.
