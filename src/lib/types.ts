@@ -77,13 +77,48 @@ export type NextWork = {
   command: string[];
 };
 
+export type DevelopmentTask = {
+  id: string;
+  title: string;
+  surface: string;
+  risk: string;
+  rationale: string;
+  files: string[];
+  requiredGate: string;
+  allowedActions: string[];
+};
+
+export type PatchEdit = {
+  path: string;
+  original: string;
+  replacement: string;
+};
+
+export type PatchPlan = {
+  taskId: string;
+  branchName: string;
+  summary: string;
+  edits: PatchEdit[];
+  forbiddenEdits: string[];
+  expectedGate: string;
+  modelUsed: string;
+};
+
+export type LocalCommitResult = {
+  branch: string;
+  commitSha: string;
+  status: string;
+  gateCommand: string[];
+  gateOutputSummary: string;
+};
+
 export type AgentRun = {
   id: string;
   repoPath: string;
   objective: string;
   branch: string;
   status: "completed" | "blocked" | "failed";
-  mode: "dry_run" | "controlled";
+  mode: "dry_run" | "controlled" | "local_commit";
   modelUsed: string;
   startedAt: string;
   completedAt: string;
@@ -91,6 +126,10 @@ export type AgentRun = {
   plan: MicroPlan;
   checkout: RepoCheckout | null;
   nextWork: NextWork | null;
+  task: DevelopmentTask | null;
+  patchPlan: PatchPlan | null;
+  commitResult: LocalCommitResult | null;
+  changedFiles: string[];
   lessons: string[];
   persistence: string;
 };

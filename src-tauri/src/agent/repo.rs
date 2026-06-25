@@ -125,6 +125,7 @@ pub fn ensure_oneepis_checkout(
 
         let status = git(&repo_path, &["status", "--short"])?;
         if status.trim().is_empty() {
+            git(&repo_path, &["checkout", "main"])?;
             let fetch = git(&repo_path, &["fetch", "--prune", "origin"])?;
             let pull = git(&repo_path, &["pull", "--ff-only", "origin", "main"])?;
             return Ok(RepoCheckout {

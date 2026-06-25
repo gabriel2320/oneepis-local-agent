@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Activity, Bot, BrainCircuit, CheckCircle2, FileText, GitBranch, Play, ShieldCheck } from "lucide-react";
-import { getOllamaStatus, inspectRepository, planMicrocycle, runOneEpisAutopilot } from "./lib/api";
+import { getOllamaStatus, inspectRepository, planMicrocycle, runOneEpisAutopilot, runOneEpisDevAutopilot } from "./lib/api";
 import type { AgentRun, MicroPlan, OllamaStatus, RepoInspection } from "./lib/types";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -67,6 +67,21 @@ function App() {
     }
   }
 
+  async function runDevAutopilot() {
+    setBusy("dev");
+    setError(null);
+    try {
+      const result = await runOneEpisDevAutopilot(repoPath, objective, 1);
+      setRun(result);
+      setRepoPath(result.repoPath);
+      setInspection(await inspectRepository(result.repoPath));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     void loadAll();
   }, []);
@@ -82,8 +97,8 @@ function App() {
             </div>
             <h1 className="mt-2 text-2xl font-semibold">OneEpis Local Agent</h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Clona OneEpis, lo audita con IA local cuando esta disponible, elige el siguiente trabajo local y ejecuta
-              un gate verificable con acciones tipadas.
+              Clona OneEpis, lo audita con IA local cuando esta disponible, elige el siguiente trabajo local y puede
+              dejar una rama con commit local listo para revision humana.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -133,6 +148,10 @@ function App() {
                 <Button variant="secondary" onClick={runAutopilot} disabled={busy !== null}>
                   <Play className="mr-2 h-4 w-4" />
                   {busy === "run" ? "Ejecutando..." : "Ejecutar local"}
+                </Button>
+                <Button variant="secondary" onClick={runDevAutopilot} disabled={busy !== null}>
+                  <GitBranch className="mr-2 h-4 w-4" />
+                  {busy === "dev" ? "Creando commit..." : "Commit local"}
                 </Button>
               </div>
             </div>
@@ -214,6 +233,31 @@ function App() {
                     <div className="mt-2 text-xs text-muted-foreground">{run.nextWork.command.join(" ")}</div>
                   </div>
                 )}
+                {run.task && (
+                  <div className="rounded border border-border px-3 py-2 text-sm">
+                    <div className="font-medium">{run.task.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {run.task.surface} · {run.task.risk} · npm run {run.task.requiredGate}
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">{run.task.rationale}</div>
+                  </div>
+                )}
+                {run.patchPlan && (
+                  <div className="rounded border border-border px-3 py-2 text-sm">
+                    <div className="font-medium">{run.patchPlan.branchName}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{run.patchPlan.summary}</div>
+                    <div className="mt-2 text-xs text-muted-foreground">{run.patchPlan.edits.length} edits propuestos</div>
+                  </div>
+                )}
+                {run.commitResult && (
+                  <div className="rounded border border-success/40 bg-success/10 px-3 py-2 text-sm">
+                    <div className="font-medium">{run.commitResult.branch}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Commit {run.commitResult.commitSha} · {run.commitResult.gateCommand.join(" ")}
+                    </div>
+                  </div>
+                )}
+                {run.changedFiles.length > 0 && <List items={run.changedFiles.map((file) => `Cambio: ${file}`)} />}
                 <List items={run.steps.map((step) => `${step.state}: ${step.summary}`)} />
                 <List items={run.lessons} />
               </div>

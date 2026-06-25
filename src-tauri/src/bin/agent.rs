@@ -61,6 +61,17 @@ async fn run() -> Result<(), String> {
             };
             print_json(&runner::run_oneepis_autopilot(request).await?)?;
         }
+        "autopilot-dev" => {
+            let request = AutopilotRequest {
+                workspace_path: option_value(&args, "--workspace").map(ToString::to_string),
+                repo_url: option_value(&args, "--repo-url").map(ToString::to_string),
+                objective: option_value(&args, "--objective").map(ToString::to_string),
+                max_cycles: option_value(&args, "--max-cycles").and_then(|value| value.parse::<u8>().ok()),
+                mode: Some("local_commit".to_string()),
+                database_url: option_value(&args, "--database-url").map(ToString::to_string),
+            };
+            print_json(&runner::run_oneepis_dev_autopilot(request).await?)?;
+        }
         "stop" => {
             println!(
                 "{}",
@@ -97,7 +108,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {
 
 fn usage() -> Result<(), String> {
     Err(
-        "Uso: agent inspect <repo> | agent plan <repo> [--objective texto] | agent run <repo> [--max-cycles 1] | agent autopilot [--workspace ruta] [--repo-url url] [--objective texto] | agent ollama | agent stop"
+        "Uso: agent inspect <repo> | agent plan <repo> [--objective texto] | agent run <repo> [--max-cycles 1] | agent autopilot [--workspace ruta] | agent autopilot-dev [--workspace ruta] [--objective texto] | agent ollama | agent stop"
             .to_string(),
     )
 }

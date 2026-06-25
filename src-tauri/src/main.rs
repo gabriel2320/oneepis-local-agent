@@ -34,6 +34,11 @@ async fn run_oneepis_autopilot(request: AutopilotRequest) -> Result<AgentRun, St
     runner::run_oneepis_autopilot(request).await
 }
 
+#[tauri::command]
+async fn run_oneepis_dev_autopilot(request: AutopilotRequest) -> Result<AgentRun, String> {
+    runner::run_oneepis_dev_autopilot(request).await
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -41,7 +46,8 @@ fn main() {
             get_ollama_status,
             plan_microcycle,
             run_microcycle,
-            run_oneepis_autopilot
+            run_oneepis_autopilot,
+            run_oneepis_dev_autopilot
         ])
         .run(tauri::generate_context!())
         .expect("error while running OneEpis Local Agent");

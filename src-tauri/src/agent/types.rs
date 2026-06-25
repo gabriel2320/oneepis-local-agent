@@ -122,6 +122,59 @@ pub struct NextWork {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DevelopmentTask {
+    pub id: String,
+    pub title: String,
+    pub surface: String,
+    pub risk: String,
+    pub rationale: String,
+    pub files: Vec<String>,
+    pub required_gate: String,
+    pub allowed_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchEdit {
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub original: String,
+    #[serde(default)]
+    pub replacement: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchPlan {
+    #[serde(default)]
+    pub task_id: String,
+    #[serde(default)]
+    pub branch_name: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub edits: Vec<PatchEdit>,
+    #[serde(default)]
+    pub forbidden_edits: Vec<String>,
+    #[serde(default)]
+    pub expected_gate: String,
+    #[serde(default)]
+    pub model_used: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalCommitResult {
+    pub branch: String,
+    pub commit_sha: String,
+    pub status: String,
+    pub gate_command: Vec<String>,
+    pub gate_output_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentRun {
     pub id: String,
     pub repo_path: String,
@@ -136,6 +189,10 @@ pub struct AgentRun {
     pub plan: MicroPlan,
     pub checkout: Option<RepoCheckout>,
     pub next_work: Option<NextWork>,
+    pub task: Option<DevelopmentTask>,
+    pub patch_plan: Option<PatchPlan>,
+    pub commit_result: Option<LocalCommitResult>,
+    pub changed_files: Vec<String>,
     pub lessons: Vec<String>,
     pub persistence: String,
 }

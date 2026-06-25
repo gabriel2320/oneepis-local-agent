@@ -1,4 +1,6 @@
-use crate::agent::types::{MicroPlan, ModelPolicy, OllamaModel, OllamaStatus, RepoInspection};
+use crate::agent::types::{
+    DevelopmentTask, MicroPlan, ModelPolicy, OllamaModel, OllamaStatus, PatchPlan, RepoInspection,
+};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -154,6 +156,65 @@ pub async fn ask_for_micro_plan(
     Some(plan)
 }
 
+pub async fn ask_for_patch_plan(
+    base_url: Option<String>,
+    inspection: &RepoInspection,
+    task: &DevelopmentTask,
+    branch_name: &str,
+) -> Option<PatchPlan> {
+    let status = get_ollama_status(base_url.clone()).await.ok()?;
+    if !status.available {
+        return None;
+    }
+    let model = choose_patch_model(&status);
+    let prompt = json!({
+        "repo": inspection.project_name,
+        "branch": inspection.current_branch,
+        "task": task,
+        "branch_name": branch_name,
+        "contract": {
+            "edits": "Solo reemplazos exactos de texto en archivos permitidos.",
+            "max_edits": 3,
+            "no_shell": true,
+            "no_new_files": true,
+            "no_push": true
+        }
+    });
+    let client = Client::new();
+    let response = client
+        .post(format!("{}/api/chat", status.base_url))
+        .json(&json!({
+            "model": model,
+            "stream": false,
+            "think": false,
+            "format": "json",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Eres un agente local de desarrollo OneEpis. Devuelve solo JSON con taskId, branchName, summary, edits, forbiddenEdits, expectedGate. Cada edit debe tener path, original y replacement. No propongas comandos, rutas absolutas, archivos nuevos, push, migraciones ni cambios fuera de los archivos permitidos."
+                },
+                {
+                    "role": "user",
+                    "content": prompt.to_string()
+                }
+            ],
+            "options": {
+                "temperature": 0.05,
+                "num_predict": 1200
+            }
+        }))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let chat = response.json::<ChatResponse>().await.ok()?;
+    let mut plan = parse_patch_plan_content(&chat.message.content)?;
+    plan.model_used = model;
+    Some(plan)
+}
+
 fn parse_plan_content(content: &str) -> Option<MicroPlan> {
     let value = serde_json::from_str::<Value>(content).ok()?;
     let candidate = value.get("plan").cloned().unwrap_or(value);
@@ -199,6 +260,12 @@ fn parse_plan_content(content: &str) -> Option<MicroPlan> {
     })
 }
 
+fn parse_patch_plan_content(content: &str) -> Option<PatchPlan> {
+    let value = serde_json::from_str::<Value>(content).ok()?;
+    let candidate = value.get("patchPlan").or_else(|| value.get("patch_plan")).cloned().unwrap_or(value);
+    serde_json::from_value::<PatchPlan>(candidate).ok()
+}
+
 fn string_list(value: Option<&Value>) -> Vec<String> {
     match value {
         Some(Value::Array(values)) => values
@@ -215,6 +282,23 @@ fn choose_planning_model(status: &OllamaStatus) -> String {
     let available: BTreeSet<&str> = status.models.iter().map(|model| model.name.as_str()).collect();
     if available.contains(status.policy.governance.as_str()) {
         status.policy.governance.clone()
+    } else if available.contains(status.policy.fallback.as_str()) {
+        status.policy.fallback.clone()
+    } else {
+        status
+            .models
+            .first()
+            .map(|model| model.name.clone())
+            .unwrap_or_else(|| status.policy.fallback.clone())
+    }
+}
+
+fn choose_patch_model(status: &OllamaStatus) -> String {
+    let available: BTreeSet<&str> = status.models.iter().map(|model| model.name.as_str()).collect();
+    if available.contains(status.policy.primary_code.as_str()) {
+        status.policy.primary_code.clone()
+    } else if available.contains(status.policy.fast_code.as_str()) {
+        status.policy.fast_code.clone()
     } else if available.contains(status.policy.fallback.as_str()) {
         status.policy.fallback.clone()
     } else {
