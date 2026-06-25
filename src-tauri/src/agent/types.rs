@@ -28,6 +28,16 @@ pub struct RepoInspection {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RepoCheckout {
+    pub repo_url: String,
+    pub workspace_path: String,
+    pub repo_path: String,
+    pub action: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OllamaModel {
     pub name: String,
     pub size: u64,
@@ -102,6 +112,16 @@ pub struct AgentStep {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct NextWork {
+    pub kind: String,
+    pub title: String,
+    pub rationale: String,
+    pub gate: String,
+    pub command: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentRun {
     pub id: String,
     pub repo_path: String,
@@ -114,6 +134,8 @@ pub struct AgentRun {
     pub completed_at: String,
     pub steps: Vec<AgentStep>,
     pub plan: MicroPlan,
+    pub checkout: Option<RepoCheckout>,
+    pub next_work: Option<NextWork>,
     pub lessons: Vec<String>,
     pub persistence: String,
 }
@@ -122,6 +144,16 @@ pub struct AgentRun {
 pub struct RunRequest {
     pub repo_path: String,
     pub objective: String,
+    pub max_cycles: Option<u8>,
+    pub mode: Option<String>,
+    pub database_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AutopilotRequest {
+    pub workspace_path: Option<String>,
+    pub repo_url: Option<String>,
+    pub objective: Option<String>,
     pub max_cycles: Option<u8>,
     pub mode: Option<String>,
     pub database_url: Option<String>,

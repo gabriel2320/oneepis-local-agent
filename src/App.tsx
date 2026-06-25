@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Activity, Bot, BrainCircuit, CheckCircle2, FileText, GitBranch, Play, ShieldCheck } from "lucide-react";
-import { getOllamaStatus, inspectRepository, planMicrocycle, runMicrocycle } from "./lib/api";
+import { getOllamaStatus, inspectRepository, planMicrocycle, runOneEpisAutopilot } from "./lib/api";
 import type { AgentRun, MicroPlan, OllamaStatus, RepoInspection } from "./lib/types";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -52,11 +52,14 @@ function App() {
     }
   }
 
-  async function runDryCycle() {
+  async function runAutopilot() {
     setBusy("run");
     setError(null);
     try {
-      setRun(await runMicrocycle(repoPath, objective, 1));
+      const result = await runOneEpisAutopilot(repoPath, objective, 1);
+      setRun(result);
+      setRepoPath(result.repoPath);
+      setInspection(await inspectRepository(result.repoPath));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -79,8 +82,8 @@ function App() {
             </div>
             <h1 className="mt-2 text-2xl font-semibold">OneEpis Local Agent</h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Microciclos de desarrollo locales, gobernados y registrables. El agente observa, planifica y ejecuta
-              solo dentro de acciones tipadas.
+              Clona OneEpis, lo audita con IA local cuando esta disponible, elige el siguiente trabajo local y ejecuta
+              un gate verificable con acciones tipadas.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -97,7 +100,7 @@ function App() {
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <Card
             title="Proyecto"
-            description="Repo objetivo y objetivo de la siguiente pasada."
+            description="Workspace local de OneEpis y objetivo de la siguiente pasada."
             actions={
               <Button variant="secondary" onClick={loadAll} disabled={busy !== null}>
                 {busy === "inspect" ? "Inspeccionando..." : "Inspeccionar"}
@@ -106,7 +109,7 @@ function App() {
           >
             <div className="grid gap-3">
               <label className="grid gap-1 text-sm">
-                <span className="text-xs font-medium text-muted-foreground">Ruta del repo</span>
+                <span className="text-xs font-medium text-muted-foreground">Workspace o repo OneEpis</span>
                 <input
                   value={repoPath}
                   onChange={(event) => setRepoPath(event.target.value)}
@@ -127,9 +130,9 @@ function App() {
                   <BrainCircuit className="mr-2 h-4 w-4" />
                   {busy === "plan" ? "Planificando..." : "Planificar"}
                 </Button>
-                <Button variant="secondary" onClick={runDryCycle} disabled={busy !== null}>
+                <Button variant="secondary" onClick={runAutopilot} disabled={busy !== null}>
                   <Play className="mr-2 h-4 w-4" />
-                  {busy === "run" ? "Ejecutando..." : "Dry-run"}
+                  {busy === "run" ? "Ejecutando..." : "Ejecutar local"}
                 </Button>
               </div>
             </div>
@@ -191,7 +194,7 @@ function App() {
             )}
           </Card>
 
-          <Card title="Ultimo ciclo" description="Dry-run registrado por la maquina de estados.">
+          <Card title="Ultimo ciclo" description="Autopilot local registrado por la maquina de estados.">
             {run ? (
               <div className="grid gap-3">
                 <div className="flex flex-wrap gap-2">
@@ -199,11 +202,23 @@ function App() {
                   <Badge>{run.mode}</Badge>
                   <Badge>{run.persistence}</Badge>
                 </div>
+                {run.checkout && (
+                  <p className="text-xs text-muted-foreground">
+                    Checkout: {run.checkout.action} en {run.checkout.repoPath}
+                  </p>
+                )}
+                {run.nextWork && (
+                  <div className="rounded border border-border px-3 py-2 text-sm">
+                    <div className="font-medium">{run.nextWork.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{run.nextWork.rationale}</div>
+                    <div className="mt-2 text-xs text-muted-foreground">{run.nextWork.command.join(" ")}</div>
+                  </div>
+                )}
                 <List items={run.steps.map((step) => `${step.state}: ${step.summary}`)} />
                 <List items={run.lessons} />
               </div>
             ) : (
-              <Empty text="Ejecuta un dry-run para registrar una pasada segura." />
+              <Empty text="Ejecuta el autopilot local para clonar, auditar y correr el siguiente gate." />
             )}
           </Card>
         </section>

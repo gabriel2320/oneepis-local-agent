@@ -25,3 +25,15 @@ export function runMicrocycle(repoPath: string, objective: string, maxCycles: nu
   });
 }
 
+export function runOneEpisAutopilot(workspacePath: string, objective: string, maxCycles: number) {
+  return invoke<AgentRun>("run_oneepis_autopilot", {
+    request: {
+      workspace_path: workspacePath || null,
+      repo_url: null,
+      objective,
+      max_cycles: maxCycles,
+      mode: "controlled",
+      database_url: null,
+    },
+  });
+}

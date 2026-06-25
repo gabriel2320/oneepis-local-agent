@@ -20,6 +20,14 @@ export type RepoInspection = {
   blocks: string[];
 };
 
+export type RepoCheckout = {
+  repoUrl: string;
+  workspacePath: string;
+  repoPath: string;
+  action: string;
+  summary: string;
+};
+
 export type OllamaModel = {
   name: string;
   size: number;
@@ -61,6 +69,14 @@ export type AgentStep = {
   summary: string;
 };
 
+export type NextWork = {
+  kind: string;
+  title: string;
+  rationale: string;
+  gate: string;
+  command: string[];
+};
+
 export type AgentRun = {
   id: string;
   repoPath: string;
@@ -73,7 +89,8 @@ export type AgentRun = {
   completedAt: string;
   steps: AgentStep[];
   plan: MicroPlan;
+  checkout: RepoCheckout | null;
+  nextWork: NextWork | null;
   lessons: string[];
   persistence: string;
 };
-

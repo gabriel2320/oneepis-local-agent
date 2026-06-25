@@ -1,12 +1,12 @@
 # OneEpis Local Agent
 
-Mini Cursor local gobernado para microciclos de desarrollo con Ollama.
+Agente local para una sola tarea: clonar OneEpis en Windows, auditarlo con IA local cuando Ollama esta disponible, elegir el siguiente trabajo verificable y ejecutarlo con herramientas locales.
 
 Este repo es una herramienta externa. No es OneEpis, no vive dentro de OneEpis y no reemplaza la gobernanza del repo objetivo.
 
 ## Principios
 
-- Ollama local es el unico proveedor IA.
+- Ollama local es el unico proveedor IA; si no esta disponible, se usa un plan deterministico local.
 - El agente lee gobernanza antes de proponer cambios.
 - La autonomia termina en cambios locales y commits locales; no hay push automatico.
 - El runner usa acciones tipadas, no shell libre generado por IA.
@@ -18,10 +18,21 @@ Este repo es una herramienta externa. No es OneEpis, no vive dentro de OneEpis y
 npm install
 npm run dev
 npm run check
+npm run agent -- autopilot --workspace "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- inspect "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- plan "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis"
 npm run agent -- run "C:\\Users\\gdela\\OneDrive\\Documentos Importantes\\OneEpis" --max-cycles 1
 ```
+
+`autopilot` hace el flujo completo:
+
+1. Crea o reutiliza el workspace local.
+2. Clona `https://github.com/gabriel2320/oneepis.git` si OneEpis no existe.
+3. Si el repo esta limpio, ejecuta `git fetch --prune origin` y `git pull --ff-only origin main`.
+4. Lee gobernanza y scripts del repo.
+5. Consulta Ollama local para microplan si esta disponible.
+6. Selecciona un gate local seguro, por ejemplo `npm run check:size`, `npm run check:api` o `npm run check`.
+7. Ejecuta el gate con proceso tipado, sin shell libre y sin push.
 
 ## Configuracion
 
@@ -45,13 +56,13 @@ URL local:
 AGENT_DATABASE_URL=postgresql://oneepis_agent:oneepis_agent@localhost:5444/oneepis_agent
 ```
 
-## Estado v0.1
+## Estado v0.2
 
 - Inspeccion de repo objetivo.
 - Deteccion OneEpis por `AGENTS.md` + `docs/GOVERNANCE.md`.
 - Estado Ollama y modelos por politica.
 - Plan de microciclo gobernado.
 - Bitacora PostgreSQL opcional.
-- Runner dry-run con maquina de estados cerrada.
+- Autopilot local controlado para clonar/actualizar OneEpis y ejecutar el siguiente gate local.
 
-La ejecucion con patches reales queda bloqueada hasta que los tests de v0.3 esten completos.
+La generacion y aplicacion de patches reales sigue bloqueada hasta que exista un arnes de tests especifico para cambios automaticos. Esta version ejecuta trabajo local verificable, no PRs remotos ni push automatico.
